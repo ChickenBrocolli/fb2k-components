@@ -4,6 +4,10 @@
 
 A playlist view for foobar2000 64-bit. It groups the tracks of a playlist, for example by album, with the album art and an information column beside each group. Disc labels (`Disc 1`, `Disc 2`) can split a group further.
 
+![GroupPlaylist with the Album + Disc preset](screenshots/overview.png)
+
+*Four albums in the Album + Disc preset: one folder with one artist; a main folder with Disc 1 and Disc 2 subfolders; an album whose bonus tracks have a higher sample rate, so they get a cover block of their own; and an album with three artists, one cover block each.*
+
 GroupPlaylist is a 64-bit alternative to SimPlaylist. It is a new program written from scratch and is not affiliated with the author of SimPlaylist.
 
 - Groups and labels made from title formatting patterns, with ready-made presets (Album, Album + Disc, Artist / Cover / Album and others), or no grouping at all
@@ -11,6 +15,18 @@ GroupPlaylist is a 64-bit alternative to SimPlaylist. It is a new program writte
 - Star ratings you click, kept in the file tags or in Playback Statistics
 - Follows the Default UI colours, fonts and dark mode
 - English and Korean
+
+## Screenshots
+
+| Dark mode | Artist / Cover / Album preset |
+|---|---|
+| ![Dark mode](screenshots/overview-dark.png) | ![Artist / Cover / Album preset: artist headers, album and disc labels](screenshots/artist-preset.png) |
+
+| Panel menu (right-click a column title) | Preferences > Tools > GroupPlaylist |
+|---|---|
+| ![Panel menu with the Groups submenu](screenshots/header-menu.png) | ![Settings page](screenshots/settings.png) |
+
+The albums in the screenshots are made up: `tools\make-screenshot-tracks.ps1` writes them.
 
 ## Requirements
 

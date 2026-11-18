@@ -4,6 +4,10 @@
 
 foobar2000 64비트용 재생목록 보기입니다. 재생목록의 곡을 앨범 같은 단위로 묶고, 묶음마다 옆에 앨범아트와 정보 칸을 보여 줍니다. `Disc 1`, `Disc 2` 같은 라벨로 묶음을 한 번 더 나눌 수도 있습니다.
 
+![Album + Disc 프리셋으로 본 GroupPlaylist](screenshots/overview.png)
+
+*Album + Disc 프리셋으로 본 앨범 네 개. 폴더 하나에 아티스트 하나인 앨범, 상위 폴더 아래 Disc 1·Disc 2 하위 폴더가 있는 앨범, 보너스 곡만 샘플레이트가 높아서 표지 묶음이 따로 생긴 앨범, 아티스트 세 명이 섞여서 아티스트마다 표지 묶음이 생긴 앨범입니다.*
+
 GroupPlaylist는 SimPlaylist의 64비트 대안입니다. 처음부터 새로 만든 프로그램이며 SimPlaylist의 원작자와는 관계가 없습니다.
 
 - 타이틀 포맷 패턴으로 묶음과 라벨을 정합니다. 바로 쓸 수 있는 프리셋(Album, Album + Disc, Artist / Cover / Album 등)이 있고, 묶지 않고 보통 목록으로 볼 수도 있습니다.
@@ -11,6 +15,18 @@ GroupPlaylist는 SimPlaylist의 64비트 대안입니다. 처음부터 새로 �
 - 클릭해서 매기는 별점. 파일 태그나 재생 통계(Playback Statistics)에 저장합니다.
 - Default UI의 색, 글꼴, 다크 모드를 따릅니다.
 - 영어와 한국어
+
+## 스크린샷
+
+| 다크 모드 | Artist / Cover / Album 프리셋 |
+|---|---|
+| ![다크 모드](screenshots/overview-dark.png) | ![Artist / Cover / Album 프리셋: 아티스트 머리글, 앨범과 디스크 라벨](screenshots/artist-preset.png) |
+
+| 패널 메뉴(열 제목 오른쪽 클릭) | Preferences > Tools > GroupPlaylist |
+|---|---|
+| ![그룹 하위 메뉴를 연 패널 메뉴](screenshots/header-menu.png) | ![설정 페이지](screenshots/settings.png) |
+
+스크린샷의 앨범은 지어낸 것입니다. `tools\make-screenshot-tracks.ps1`이 만듭니다. 화면은 영어로 찍었습니다.
 
 ## 필요한 것
 
