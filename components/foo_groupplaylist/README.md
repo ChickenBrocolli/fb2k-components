@@ -83,7 +83,7 @@ Open **File > Preferences > Tools > GroupPlaylist**.
 - **Rating**: where a click on the stars saves the rating: **File tags**, **Playback Statistics**, or **Both**. The last two need the separate Playback Statistics component (`foo_playcount`). Without it they are greyed out and marked "(needs Playback Statistics)".
 - **Language**: **Automatic** follows the Windows display language (Korean on Korean Windows, English otherwise). **English** and **한국어** choose one. After **Apply** the panel and the page change at once. Reopen Preferences to see the page names in the new language.
 - **Scrolling**: smooth scrolling and pinned group headers, the same switches as in the panel menu.
-- **Behaviour**: remember the group preset and the scroll position of each playlist, dim text in brackets such as `(Remastered)`, sort by clicking a column title, and show the playing track in bold.
+- **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, dim text in brackets such as `(Remastered)`, and show the playing track in bold.
 
 Two pages sit below it:
 
