@@ -506,10 +506,11 @@ std::string TrackSummary(size_t tracks, double seconds) {
 } // namespace
 
 // Tracks and length of the section a label line opens, such as one disc of an album.
-// Empty when the section is the whole album, because the album header already says the same.
+// Shown even when the section holds every track under the header: in the artist presets the header is
+// the artist and the label is the album, and every album shows its own count.
 std::string PlaylistView::SectionSummary(size_t item, size_t level) const {
 	const auto [first, end] = SectionRangeOf(item, level);
-	if (AlbumRangeOf(item) == std::make_pair(first, end) || end >= m_secondsBefore.size()) return {};
+	if (end >= m_secondsBefore.size()) return {};
 	return TrackSummary(end - first, m_secondsBefore[end] - m_secondsBefore[first]);
 }
 
