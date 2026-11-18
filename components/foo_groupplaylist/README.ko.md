@@ -99,7 +99,7 @@ GroupPlaylist는 SimPlaylist의 64비트 대안입니다. 처음부터 새로 �
 
 GroupPlaylist는 [MIT 라이선스](../../LICENSE)로 배포합니다.
 
-foobar2000 SDK(Peter Pawlowski)와 Windows Template Library(Microsoft, WTL Team)를 써서 만들었습니다. 두 라이브러리의 라이선스는 [THIRD-PARTY-NOTICES.txt](../../THIRD-PARTY-NOTICES.txt)에 있고, 이 파일은 컴포넌트 파일 안에도 들어 있습니다.
+foobar2000 SDK(Peter Pawlowski)와 Windows Template Library(Microsoft, WTL Team)를 써서 만들었고, 부드러운 스크롤은 [ui_helpers](https://github.com/reupen/ui_helpers)(Reupen Shah, BSD 3-Clause)의 코드를 고쳐 썼습니다. 이 라이브러리들의 라이선스는 [THIRD-PARTY-NOTICES.txt](../../THIRD-PARTY-NOTICES.txt)에 있고, 이 파일은 컴포넌트 파일 안에도 들어 있습니다.
 
 ## 소스에서 빌드하기
 

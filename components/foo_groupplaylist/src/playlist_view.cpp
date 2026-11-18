@@ -908,6 +908,8 @@ void PlaylistView::RenderOverlay2(const CRect& updateRect, CDCHandle dc) {
 // They are drawn again in their place.
 void PlaylistView::OnViewOriginChange(CPoint delta) {
 	__super::OnViewOriginChange(delta);
+	// Any other move (scroll bar, keys, a jump to the playing track, another playlist) ends a wheel animation where it is.
+	if (!m_animatingWheel && m_smoothScroll && m_smoothScroll->IsAnimating()) m_smoothScroll->AbandonAnimation(false);
 	if (!m_settings.pinHeaders || delta.y == 0 || !m_hWnd) return;
 	const CRect client = GetClientRectHook();
 	CRect band = client;
@@ -994,6 +996,8 @@ void PlaylistView::RenderInfoLines(size_t block, const CRect& blockRect, CDCHand
 }
 
 void PlaylistView::OnDestroy() {
+	// The timing thread sends frames to this window, so it stops before the window goes away.
+	StopSmoothScroll();
 	SaveScrollPosition();
 	ClaimEditContext(false);
 	set_callback_flags(0);
@@ -1273,6 +1277,52 @@ LRESULT PlaylistView::OnCoverWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled) {
 	return 0;
 }
 
+// The wheel without Ctrl or Shift, while smooth scrolling is on, starts or extends an animation (smooth_scroll.h).
+// A precision touchpad, a held mouse button (a drag), and a list that does not scroll go on to the list control.
+LRESULT PlaylistView::OnSmoothWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled) {
+	handled = FALSE;
+	if (!m_settings.smoothScroll) return 0;
+	const WORD keys = GET_KEYSTATE_WPARAM(wheel);
+	if ((keys & (MK_SHIFT | MK_CONTROL | MK_LBUTTON | MK_RBUTTON | MK_MBUTTON)) != 0) return 0;
+	const CRect client = GetClientRectHook();
+	if (client.Height() >= GetViewAreaRectAbs().Height()) return 0;
+	if (!m_smoothScroll) {
+		m_smoothScroll.emplace(m_hWnd, kSmoothScrollMessage, kSmoothScrollTimer,
+			[this] { return static_cast<int>(GetViewOrigin().y); },
+			[this](int position) { return static_cast<int>(ClipViewOrigin(CPoint(GetViewOrigin().x, position)).y); },
+			[this](int position) {
+				pfc::vartoggle_t<bool> moving(m_animatingWheel, true);
+				MoveViewOrigin(CPoint(GetViewOrigin().x, position));
+			});
+	}
+	const int wheelDelta = GET_WHEEL_DELTA_WPARAM(wheel);
+	if (!m_smoothScroll->ShouldAnimateWheel(wheelDelta)) return 0;
+	UINT lines = 3;
+	SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+	m_smoothScroll->DeltaScroll(smooth_scroll::WheelPixels(wheelDelta, lines, GetItemHeight(), client.Height()));
+	handled = TRUE;
+	return 0;
+}
+
+LRESULT PlaylistView::OnSmoothScrollFrame(UINT, WPARAM, LPARAM, BOOL&) {
+	if (m_smoothScroll) m_smoothScroll->OnMessage();
+	return 0;
+}
+
+LRESULT PlaylistView::OnSmoothScrollTimer(UINT, WPARAM timer, LPARAM, BOOL& handled) {
+	if (timer != kSmoothScrollTimer) {
+		handled = FALSE;
+		return 0;
+	}
+	if (m_smoothScroll) m_smoothScroll->OnTimer();
+	else KillTimer(kSmoothScrollTimer);
+	return 0;
+}
+
+void PlaylistView::StopSmoothScroll() {
+	m_smoothScroll.reset();
+}
+
 void PlaylistView::SetHostFont(HFONT font) {
 	m_hostFont = font;
 	ApplyFonts();
@@ -1301,6 +1351,7 @@ void PlaylistView::ApplyViewSettings(const ViewSettings& settings) {
 	SaveViewSettings(settings);
 	for (PlaylistView* view : LiveViews()) {
 		view->m_settings = LoadViewSettings();
+		if (!view->m_settings.smoothScroll) view->StopSmoothScroll();
 		if (!view->m_hWnd) continue;
 		view->m_layout = view->CapturedLayout();
 		view->m_layout.coverWidth = static_cast<float>(view->m_settings.coverSize + 2 * kCoverInset);

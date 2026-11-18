@@ -99,7 +99,7 @@ Two pages sit below it:
 
 GroupPlaylist is released under the [MIT License](../../LICENSE).
 
-It is built with the foobar2000 SDK (Peter Pawlowski) and the Windows Template Library (Microsoft, WTL Team). Their licenses are in [THIRD-PARTY-NOTICES.txt](../../THIRD-PARTY-NOTICES.txt), which also ships inside the component file.
+It is built with the foobar2000 SDK (Peter Pawlowski) and the Windows Template Library (Microsoft, WTL Team), and its smooth scrolling is adapted from [ui_helpers](https://github.com/reupen/ui_helpers) (Reupen Shah, BSD 3-Clause). Their licenses are in [THIRD-PARTY-NOTICES.txt](../../THIRD-PARTY-NOTICES.txt), which also ships inside the component file.
 
 ## Building from source
 

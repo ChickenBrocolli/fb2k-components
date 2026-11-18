@@ -7,6 +7,7 @@ void RunRatingCellTests();
 void RunViewSettingsTests();
 void RunTextPartsTests();
 void RunUiTextTests();
+void RunSmoothScrollTests();
 
 int main() {
 	RunGroupModelTests();
@@ -16,6 +17,7 @@ int main() {
 	RunViewSettingsTests();
 	RunTextPartsTests();
 	RunUiTextTests();
+	RunSmoothScrollTests();
 
 	if (FailureCount() == 0) {
 		std::printf("unit tests: all checks passed\n");

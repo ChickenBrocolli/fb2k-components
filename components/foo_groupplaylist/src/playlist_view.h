@@ -11,6 +11,7 @@
 #include "group_preset.h"
 #include "rating_cell.h"
 #include "rating_store.h"
+#include "smooth_scroll.h"
 #include "view_settings.h"
 
 // List control that shows the active playlist.
@@ -85,6 +86,9 @@ public:
 		MESSAGE_HANDLER(WM_MOUSEMOVE, OnStarMouseMove)
 		MESSAGE_HANDLER(WM_MOUSELEAVE, OnStarMouseMove)
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnStarMouseMove)
+		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnSmoothWheel)
+		MESSAGE_HANDLER(kSmoothScrollMessage, OnSmoothScrollFrame)
+		MESSAGE_HANDLER(WM_TIMER, OnSmoothScrollTimer)
 		CHAIN_MSG_MAP(CListControlWithSelectionBase)
 	END_MSG_MAP()
 
@@ -96,7 +100,9 @@ protected:
 	bool GetGroupHeaderText2(size_t baseItem, pfc::string_base& out) const override;
 	int GetGroupHeaderHeight() const override;
 	int GetItemHeight() const override;
-	bool UserEnabledSmoothScroll() const override { return m_settings.smoothScroll; }
+	// A wheel animation moves the view itself, one display frame at a time, so the list control's own short
+	// animation is left out of those moves. Keys and scroll bar arrows still use it.
+	bool UserEnabledSmoothScroll() const override { return m_settings.smoothScroll && !m_animatingWheel; }
 	void RenderGroupHeaderText2(size_t baseItem, const CRect& headerRect, const CRect& updateRect, CDCHandle dc) override;
 	// The track counts at the right end of the headers and labels follow the window's width,
 	// so a change of width repaints the whole list, not only the uncovered strip.
@@ -269,6 +275,16 @@ private:
 	// The section under the label row the left button went down on, until the button comes up or a drag starts.
 	std::optional<std::pair<size_t, size_t>> m_pressedSection;
 	static constexpr UINT kSelectSectionMessage = WM_APP + 41;
+	// Smooth wheel scrolling (smooth_scroll.h). The helper is made on the first animated wheel turn.
+	static constexpr UINT kSmoothScrollMessage = WM_APP + 42;
+	static constexpr UINT_PTR kSmoothScrollTimer = 0x47504c53;
+	std::optional<SmoothScrollHelper> m_smoothScroll;
+	// True while the helper moves the view, so that move does not end the animation.
+	bool m_animatingWheel = false;
+	LRESULT OnSmoothWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled);
+	LRESULT OnSmoothScrollFrame(UINT, WPARAM, LPARAM, BOOL&);
+	LRESULT OnSmoothScrollTimer(UINT, WPARAM timer, LPARAM, BOOL& handled);
+	void StopSmoothScroll();
 	// Total length in seconds of each album, in album order.
 	std::vector<double> m_albumSeconds;
 	// Total length of the items before each item, one more entry than items, so a range sums in one step.

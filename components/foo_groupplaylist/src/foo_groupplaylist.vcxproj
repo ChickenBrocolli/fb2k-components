@@ -83,6 +83,7 @@
     <ClCompile Include="preferences_page.cpp" />
     <ClCompile Include="preset_store.cpp" />
     <ClCompile Include="rating_store.cpp" />
+    <ClCompile Include="smooth_scroll.cpp" />
     <ClCompile Include="ui_language.cpp" />
     <ClCompile Include="view_settings.cpp" />
   </ItemGroup>
@@ -101,6 +102,8 @@
     <ClInclude Include="preset_store.h" />
     <ClInclude Include="rating_cell.h" />
     <ClInclude Include="rating_store.h" />
+    <ClInclude Include="smooth_scroll.h" />
+    <ClInclude Include="smooth_scroll_math.h" />
     <ClInclude Include="ui_language.h" />
     <ClInclude Include="ui_text.h" />
     <ClInclude Include="view_settings.h" />
