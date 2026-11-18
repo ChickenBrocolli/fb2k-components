@@ -3,6 +3,8 @@
 // Limits of the settings on the Preferences page. All sizes are pixels at 96 DPI.
 // Standard library only, so the unit tests build without the foobar2000 SDK.
 
+#include <cmath>
+
 #include "smooth_scroll_math.h"
 
 constexpr int kDefaultCoverSize = 98;
@@ -42,9 +44,13 @@ inline constexpr InertiaSetting kInertiaSettings[] = {
 	{ &smooth_scroll::InertiaParams::maxAcceleration, 1.0, 10.0, 1 },
 };
 
+// Pulled into the range and rounded to the decimals the page shows. Otherwise a typed 1.234 would scroll as 1.234,
+// show as 1.23 and be saved in a preset as 1.23, and the page would never stop calling the preset changed.
 inline double ClampInertiaValue(const InertiaSetting& setting, double value) {
 	if (!(value >= setting.minimum)) return setting.minimum;  // also NaN
-	return value > setting.maximum ? setting.maximum : value;
+	if (value > setting.maximum) return setting.maximum;
+	const double scale = std::pow(10.0, setting.decimals);
+	return std::round(value * scale) / scale;
 }
 
 inline smooth_scroll::InertiaParams ClampInertiaParams(smooth_scroll::InertiaParams params) {

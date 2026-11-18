@@ -32,10 +32,14 @@ void BrokenScrollPresetLinesAreSkippedAndNumbersPulledIn() {
 		"Short\t90\t1\n"                // numbers missing
 		"Word\t90\tfast\t120\t0.4\t3\n" // not a number
 		"Good\t50\t1\t120\t0.4\t3\n"    // the same name again
-		"Wild\t1\t99\t120\t0.4\t3\n");
-	CHECK(presets.size() == 2);
+		"Default\t50\t1\t120\t0.4\t3\n" // a built-in name
+		"Heavy\t50\t1\t120\t0.4\t3\n"   // a built-in name
+		"Wild\t1\t99\t120\t0.4\t3\n"
+		"Fine\t90\t1.234\t120\t0.4\t3\n");
+	CHECK(presets.size() == 3);
 	CHECK(presets[0].name == "Good" && presets[0].params.tauMs == 90.0);
 	CHECK(presets[1].name == "Wild" && presets[1].params.tauMs == 30.0 && presets[1].params.distanceScale == 4.0);
+	CHECK(presets[2].name == "Fine" && presets[2].params.distanceScale == 1.23);
 }
 
 void ANewScrollPresetNeedsAFreeName() {

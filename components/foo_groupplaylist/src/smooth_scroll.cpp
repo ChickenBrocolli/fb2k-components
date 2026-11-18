@@ -75,6 +75,16 @@ CComPtr<IDXGIOutput> PrimaryOutput() {
 	return output;
 }
 
+// Names the thread for a debugger. SetThreadDescription is looked up, not linked: it exists only from Windows 10 1607,
+// and a linked call would stop the whole component from loading on Windows 7 and 8, which 64-bit foobar2000 supports.
+void NameThisThread(const wchar_t* name) {
+	using SetThreadDescriptionFunc = HRESULT(WINAPI*)(HANDLE, PCWSTR);
+	const HMODULE kernel = GetModuleHandleW(L"kernel32.dll");
+	if (!kernel) return;
+	const auto setDescription = reinterpret_cast<SetThreadDescriptionFunc>(GetProcAddress(kernel, "SetThreadDescription"));
+	if (setDescription) setDescription(GetCurrentThread(), name);
+}
+
 } // namespace
 
 void SmoothScrollTimingThread::Start(std::function<void()> onTick) {
@@ -82,7 +92,7 @@ void SmoothScrollTimingThread::Start(std::function<void()> onTick) {
 	if (m_thread) return;
 
 	m_thread.emplace([this, onTick = std::move(onTick)](std::stop_token stop) {
-		SetThreadDescription(GetCurrentThread(), L"GroupPlaylist smooth scroll");
+		NameThisThread(L"GroupPlaylist smooth scroll");
 		CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 		{
 			CComPtr<IDXGIOutput> output = PrimaryOutput();

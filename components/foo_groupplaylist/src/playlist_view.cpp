@@ -220,13 +220,22 @@ void PlaylistView::RebuildColumns() {
 
 // Sorts the whole active playlist. A reversed sort is the plain sort turned around. Ctrl+Z undoes it.
 void PlaylistView::SortPlaylist(const char* pattern, bool descending) {
+	m_sorting = true;
 	m_playlists->activeplaylist_undo_backup();
 	m_playlists->activeplaylist_sort_by_format(pattern, false);
-	if (!descending) return;
-	const t_size count = m_playlists->activeplaylist_get_item_count();
-	std::vector<t_size> order(count);
-	for (t_size index = 0; index < count; ++index) order[index] = count - 1 - index;
-	m_playlists->activeplaylist_reorder_items(order.data(), count);
+	if (descending) {
+		const t_size count = m_playlists->activeplaylist_get_item_count();
+		std::vector<t_size> order(count);
+		for (t_size index = 0; index < count; ++index) order[index] = count - 1 - index;
+		m_playlists->activeplaylist_reorder_items(order.data(), count);
+	}
+	m_sorting = false;
+}
+
+GUID PlaylistView::ActivePlaylistGuid() const {
+	auto playlists = playlist_manager_v5::get();
+	const t_size playlist = playlists->get_active_playlist();
+	return playlist == pfc_infinite ? pfc::guid_null : playlists->playlist_get_guid(playlist);
 }
 
 // A click on a track column header sorts the playlist by that column. A second click on the same
@@ -242,9 +251,8 @@ void PlaylistView::OnColumnHeaderClick(t_size listColumn) {
 	if (position >= m_layout.columns.size()) return;
 	const ColumnDef* def = FindColumnDef(m_layout.columns[position].name);
 	if (!def) return;
-	m_sortDescending = def->name == m_sortColumn && !m_sortDescending;
-	m_sortColumn = def->name;
-	SortPlaylist(def->kind == ColumnKind::Rating ? RatingReadPattern(GetRatingStorage()) : def->pattern.c_str(), m_sortDescending);
+	const bool descending = m_headerSort.Click(def->name, ActivePlaylistGuid());
+	SortPlaylist(def->kind == ColumnKind::Rating ? RatingReadPattern(GetRatingStorage()) : def->pattern.c_str(), descending);
 }
 
 namespace {
@@ -258,8 +266,10 @@ constexpr GUID guid_playlist_scroll = { 0x3a4e2d8c, 0x430b, 0x4a2d, { 0xa1, 0xdc
 } // namespace
 
 void PlaylistView::ChoosePreset(size_t index) {
+	if (index >= m_presets.size()) return;
 	SelectPreset(index);
-	if (index < m_presets.size()) RememberPlaylistGrouping(m_presets[index].name);
+	RememberPlaylistGrouping(m_presets[index].name);
+	if (m_headerSort.SortedByColumn(ActivePlaylistGuid())) SortByActivePreset();
 }
 
 void PlaylistView::ChooseUngrouped() {
@@ -369,7 +379,7 @@ void PlaylistView::OpenCoverFolder(size_t block) {
 }
 
 void PlaylistView::SortByActivePreset() {
-	m_sortColumn.clear();
+	m_headerSort.Forget();
 	SortPlaylist(m_presets[m_activePreset].sortPattern.c_str(), false);
 }
 
@@ -767,7 +777,7 @@ int PlaylistView::GetItemHeight2Content(size_t item, int) const {
 void PlaylistView::RenderItem(t_size item, const CRect& itemRect, const CRect& updateRect, CDCHandle dc) {
 	const int labelHeight = item < m_groups.ItemCount() ? LabelLinesAbove(item) * GetItemHeight() : 0;
 	if (labelHeight == 0) {
-		__super::RenderItem(item, itemRect, updateRect, dc);
+		RenderTrackRow(item, itemRect, updateRect, dc);
 		return;
 	}
 	CRect labelRect = itemRect;
@@ -776,7 +786,33 @@ void PlaylistView::RenderItem(t_size item, const CRect& itemRect, const CRect& u
 
 	CRect rowRect = itemRect;
 	rowRect.top = labelRect.bottom;
-	__super::RenderItem(item, rowRect, updateRect, dc);
+	RenderTrackRow(item, rowRect, updateRect, dc);
+}
+
+// As the list control draws a row, except for the selection. The list control draws a selected row in the style of
+// Windows' own lists, which frames every row and so puts a dark line between selected rows. Here a selected row is
+// filled flat with a pale tint, so a run of selected tracks reads as one block, as in the original.
+void PlaylistView::RenderTrackRow(t_size item, const CRect& rowRect, const CRect& updateRect, CDCHandle dc) {
+	const bool weHaveFocus = ::GetFocus() == m_hWnd;
+	const COLORREF fill = IsItemSelected(item) ? SelectionFill(weHaveFocus) : GetSysColorHook(colorBackground);
+	CRect selectionRect = rowRect;
+	AdjustSelectionRect(item, selectionRect);
+	RenderItemBackground(dc, selectionRect, item, fill);
+	{
+		DCStateScope state(dc);
+		dc.SetBkMode(TRANSPARENT);
+		dc.SetBkColor(fill);
+		dc.SetTextColor(GetSysColorHook(colorText));
+		RenderItemText(item, rowRect, updateRect, dc, true);
+	}
+	if (weHaveFocus && IsItemFocused(item)) PaintUtils::FocusRect2(dc, selectionRect, fill);
+}
+
+// A tint of the selection colour (the Default UI colour, or Windows' accent) over the background. The tint is
+// stronger on a dark background, where a pale one would hardly show, and weaker while the panel has no focus.
+COLORREF PlaylistView::SelectionFill(bool focused) const {
+	const int percent = GetDarkMode() ? (focused ? 45 : 30) : (focused ? 22 : 13);
+	return PaintUtils::BlendColor(GetSysColorHook(colorBackground), GetSysColorHook(colorSelection), percent);
 }
 
 // Labels sit over the track columns. The outermost subgroup level gets a rule to its right, as in the original.
@@ -1452,14 +1488,16 @@ LRESULT PlaylistView::OnSelectPressedSection(UINT, WPARAM, LPARAM, BOOL&) {
 
 // A drag that starts on an album header moves the album, and one that starts on a label row moves that
 // section. Both are dropped only at boundaries of the same kind.
+// The list control passes the origin in list coordinates (PointClientToAbs), not client coordinates.
 void PlaylistView::RunDragDrop(const CPoint& origin, bool isRightClick) {
 	size_t item = 0;
 	m_pressedSection.reset();
 	m_dragUnit = DragUnit::Tracks;
 	if (!isRightClick) {
-		if (GroupHeaderFromPoint2(origin, item)) {
+		const CPoint clientOrigin = PointAbsToClient(origin);
+		if (GroupHeaderFromPoint2(clientOrigin, item)) {
 			m_dragUnit = DragUnit::Album;
-		} else if (const std::optional<size_t> level = LabelLevelAtPoint(origin, item)) {
+		} else if (const std::optional<size_t> level = LabelLevelAtPoint(clientOrigin, item)) {
 			m_dragUnit = DragUnit::Section;
 			m_dragLevel = *level;
 		}
@@ -1549,15 +1587,20 @@ void PlaylistView::ExecuteDefaultAction(t_size index) {
 	m_playlists->activeplaylist_execute_default_action(index);
 }
 
+// Any change of order this view did not make itself (a drag, another sort, added or removed tracks)
+// ends the order of the header click. Ctrl+Z arrives as a playlist switch (on_playlist_switch).
 void PlaylistView::on_items_added(t_size, metadb_handle_list_cref, const bit_array&) {
+	if (!m_sorting) m_headerSort.Forget();
 	OnRowsMoved();
 }
 
 void PlaylistView::on_items_reordered(const t_size*, t_size) {
+	if (!m_sorting) m_headerSort.Forget();
 	OnRowsMoved();
 }
 
 void PlaylistView::on_items_removed(const bit_array&, t_size, t_size) {
+	if (!m_sorting) m_headerSort.Forget();
 	OnRowsMoved();
 }
 
@@ -1595,7 +1638,9 @@ void PlaylistView::on_item_ensure_visible(t_size index) {
 }
 
 // The view still shows the old playlist's rows here, so its scroll position is saved first.
+// Undo and redo also arrive here, and they end the order of a header click as well.
 void PlaylistView::on_playlist_switch() {
+	m_headerSort.Forget();
 	SaveScrollPosition();
 	m_selectionStart = SIZE_MAX;
 	ApplyPlaylistPreset();

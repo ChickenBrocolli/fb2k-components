@@ -71,7 +71,8 @@ std::wstring FormatValue(const InertiaSetting& setting, double value) {
 	return text;
 }
 
-// The number typed in a box, or nothing while it is not a number inside the range (the user may still be typing).
+// The number typed in a box, rounded to the decimals the box shows, or nothing while it is not a number inside the
+// range (the user may still be typing).
 std::optional<double> ParseValue(const InertiaSetting& setting, const std::wstring& text) {
 	wchar_t* end = nullptr;
 	const double value = std::wcstod(text.c_str(), &end);
@@ -79,7 +80,7 @@ std::optional<double> ParseValue(const InertiaSetting& setting, const std::wstri
 	while (*end == L' ') ++end;
 	if (*end != 0) return std::nullopt;
 	if (!(value >= setting.minimum && value <= setting.maximum)) return std::nullopt;
-	return value;
+	return ClampInertiaValue(setting, value);
 }
 
 class ScrollingDialog : public CDialogImpl<ScrollingDialog>, public preferences_page_instance {

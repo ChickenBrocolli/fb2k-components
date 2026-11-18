@@ -44,6 +44,17 @@ void InertiaNumbersArePulledIntoTheirRanges() {
 	CHECK(ClampInertiaParams({}) == smooth_scroll::InertiaParams{});
 }
 
+// A number is kept with the decimals the page shows it with, so a typed 1.234 is the 1.23 the page shows and saves.
+void InertiaNumbersKeepTheDecimalsThePageShows() {
+	const InertiaSetting& glide = kInertiaSettings[0];  // no decimals
+	const InertiaSetting& distance = kInertiaSettings[1];  // two decimals
+	CHECK(ClampInertiaValue(distance, 1.234) == 1.23);
+	CHECK(ClampInertiaValue(distance, 1.236) == 1.24);
+	CHECK(ClampInertiaValue(kInertiaSettings[3], 0.15) == 0.15);  // the speed-up step, two decimals
+	CHECK(ClampInertiaValue(glide, 90.5) == 91.0);
+	CHECK(ClampInertiaValue(glide, 90.4) == 90.0);
+}
+
 } // namespace
 
 void RunViewSettingsTests() {
@@ -52,4 +63,5 @@ void RunViewSettingsTests() {
 	ARowPaddingOutsideTheRangeIsPulledIn();
 	TheDefaultsLieInsideTheirRanges();
 	InertiaNumbersArePulledIntoTheirRanges();
+	InertiaNumbersKeepTheDecimalsThePageShows();
 }

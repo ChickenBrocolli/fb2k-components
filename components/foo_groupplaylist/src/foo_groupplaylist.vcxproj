@@ -91,6 +91,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="column_def.h" />
+    <ClInclude Include="header_sort.h" />
     <ClInclude Include="scroll_presets.h" />
     <ClInclude Include="settings_file.h" />
     <ClInclude Include="settings_transfer.h" />

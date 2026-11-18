@@ -84,12 +84,24 @@ inline std::string SerializeScrollPresets(const std::vector<ScrollPreset>& prese
 	return out;
 }
 
-// Broken lines and a second preset of the same name are skipped.
+inline std::optional<size_t> FindScrollPreset(const std::vector<ScrollPreset>& presets, const std::string& name) {
+	for (size_t index = 0; index < presets.size(); ++index) {
+		if (presets[index].name == name) return index;
+	}
+	return std::nullopt;
+}
+
+inline bool IsBuiltInScrollPreset(const std::string& name) {
+	return FindScrollPreset(BuiltInScrollPresets(), name).has_value();
+}
+
+// Broken lines and a second preset of the same name are skipped. So is a preset with a built-in name, which a
+// settings file edited by hand can hold: the page would list the name twice and could not remove the second one.
 inline std::vector<ScrollPreset> ParseScrollPresets(const std::string& text) {
 	std::vector<ScrollPreset> presets;
 	for (const std::vector<std::string>& fields : SplitFieldLines(text)) {
 		const std::optional<ScrollPreset> preset = ScrollPresetFromFields(fields);
-		if (!preset) continue;
+		if (!preset || IsBuiltInScrollPreset(preset->name)) continue;
 		bool taken = false;
 		for (const ScrollPreset& other : presets) taken = taken || other.name == preset->name;
 		if (!taken) presets.push_back(*preset);
@@ -102,17 +114,6 @@ inline std::vector<ScrollPreset> AllScrollPresets(const std::vector<ScrollPreset
 	std::vector<ScrollPreset> all = BuiltInScrollPresets();
 	all.insert(all.end(), userPresets.begin(), userPresets.end());
 	return all;
-}
-
-inline std::optional<size_t> FindScrollPreset(const std::vector<ScrollPreset>& presets, const std::string& name) {
-	for (size_t index = 0; index < presets.size(); ++index) {
-		if (presets[index].name == name) return index;
-	}
-	return std::nullopt;
-}
-
-inline bool IsBuiltInScrollPreset(const std::string& name) {
-	return FindScrollPreset(BuiltInScrollPresets(), name).has_value();
 }
 
 // A new preset needs a name that no preset has yet. shownBuiltInNames are the built-in names in the current

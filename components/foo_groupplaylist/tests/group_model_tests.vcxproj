@@ -44,6 +44,7 @@
     <ClCompile Include="column_def_tests.cpp" />
     <ClCompile Include="group_model_tests.cpp" />
     <ClCompile Include="group_preset_tests.cpp" />
+    <ClCompile Include="header_sort_tests.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="rating_cell_tests.cpp" />
     <ClCompile Include="settings_tests.cpp" />

@@ -9,6 +9,7 @@
 #include "cover_cache.h"
 #include "group_model.h"
 #include "group_preset.h"
+#include "header_sort.h"
 #include "rating_cell.h"
 #include "rating_store.h"
 #include "smooth_scroll.h"
@@ -33,6 +34,7 @@ public:
 	size_t ActivePreset() const { return m_activePreset; }
 	void SelectPreset(size_t index);
 	// Selects a preset the user picked, and remembers it for the active playlist when that setting is on.
+	// When the playlist is in the order of a column header click, it is sorted by the preset again.
 	void ChoosePreset(size_t index);
 	// "None" in the Groups menu: a plain track list with no group headers, covers or labels.
 	// The active preset is kept, so choosing it again brings the groups back as they were.
@@ -113,6 +115,8 @@ protected:
 	int GetItemHeight2(size_t item) const override;
 	int GetItemHeight2Content(size_t item, int height) const override;
 	void RenderItem(t_size item, const CRect& itemRect, const CRect& updateRect, CDCHandle dc) override;
+	void RenderTrackRow(t_size item, const CRect& rowRect, const CRect& updateRect, CDCHandle dc);
+	COLORREF SelectionFill(bool focused) const;
 	void RenderSubItemText(t_size item, t_size subItem, const CRect& subItemRect, const CRect& updateRect, CDCHandle dc, bool allowColors) override;
 	void RenderGroupOverlayColumn(size_t baseItem, size_t subItem, const CRect& albumColumnRect, const CRect& updateRect, CDCHandle dc) override;
 	void RenderOverlay2(const CRect& updateRect, CDCHandle dc) override;
@@ -169,6 +173,7 @@ private:
 	int StarSlotWidth() const;
 	void RenderDimmedBrackets(const char* text, const CRect& textRect, CDCHandle dc);
 	void SortPlaylist(const char* pattern, bool descending);
+	GUID ActivePlaylistGuid() const;
 	void ApplyPlaylistPreset();
 	void SaveScrollPosition();
 	void RestoreScrollPosition();
@@ -270,9 +275,10 @@ private:
 	// The unit of the drag that is running, and for a section drag the label level it started on.
 	DragUnit m_dragUnit = DragUnit::Tracks;
 	size_t m_dragLevel = 0;
-	// The column the playlist was last sorted by from its header, and whether that sort was reversed.
-	std::string m_sortColumn;
-	bool m_sortDescending = false;
+	// The last sort by a column header, and the playlist it sorted.
+	HeaderSortMemory<GUID> m_headerSort;
+	// True while this view sorts the playlist itself, so its own reorder does not count as someone else's.
+	bool m_sorting = false;
 	// The playlist this view shows, so its scroll position can be saved after the switch to another one.
 	GUID m_shownPlaylist = pfc::guid_null;
 	// The section under the label row the left button went down on, until the button comes up or a drag starts.
