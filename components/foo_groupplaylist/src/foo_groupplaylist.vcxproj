@@ -77,6 +77,8 @@
     <ClCompile Include="cover_cache.cpp" />
     <ClCompile Include="columns_page.cpp" />
     <ClCompile Include="groups_page.cpp" />
+    <ClCompile Include="scrolling_page.cpp" />
+    <ClCompile Include="settings_transfer.cpp" />
     <ClCompile Include="panel.cpp" />
     <ClCompile Include="pattern_tools.cpp" />
     <ClCompile Include="playlist_view.cpp" />
@@ -89,6 +91,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="column_def.h" />
+    <ClInclude Include="scroll_presets.h" />
+    <ClInclude Include="settings_file.h" />
+    <ClInclude Include="settings_transfer.h" />
     <ClInclude Include="column_store.h" />
     <ClInclude Include="checked_list.h" />
     <ClInclude Include="link_button.h" />

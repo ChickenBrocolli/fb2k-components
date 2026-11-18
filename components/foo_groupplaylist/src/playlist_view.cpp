@@ -909,7 +909,7 @@ void PlaylistView::RenderOverlay2(const CRect& updateRect, CDCHandle dc) {
 void PlaylistView::OnViewOriginChange(CPoint delta) {
 	__super::OnViewOriginChange(delta);
 	// Any other move (scroll bar, keys, a jump to the playing track, another playlist) ends a wheel animation where it is.
-	if (!m_animatingWheel && m_smoothScroll && m_smoothScroll->IsAnimating()) m_smoothScroll->AbandonAnimation(false);
+	if (!m_animatingWheel && m_smoothScroll && m_smoothScroll->IsAnimating()) m_smoothScroll->AbandonAnimation();
 	if (!m_settings.pinHeaders || delta.y == 0 || !m_hWnd) return;
 	const CRect client = GetClientRectHook();
 	CRect band = client;
@@ -1299,7 +1299,7 @@ LRESULT PlaylistView::OnSmoothWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled) {
 	if (!m_smoothScroll->ShouldAnimateWheel(wheelDelta)) return 0;
 	UINT lines = 3;
 	SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
-	m_smoothScroll->DeltaScroll(smooth_scroll::WheelPixels(wheelDelta, lines, GetItemHeight(), client.Height()));
+	m_smoothScroll->DeltaScroll(smooth_scroll::WheelPixels(wheelDelta, lines, GetItemHeight(), client.Height()), LiveInertiaParams());
 	handled = TRUE;
 	return 0;
 }
@@ -1349,8 +1349,12 @@ void PlaylistView::ApplyFonts() {
 // The cover column is sized to fit the cover, so a new cover size also sets that column's width.
 void PlaylistView::ApplyViewSettings(const ViewSettings& settings) {
 	SaveViewSettings(settings);
+	ShowViewSettings(LoadViewSettings());
+}
+
+void PlaylistView::ShowViewSettings(const ViewSettings& settings) {
 	for (PlaylistView* view : LiveViews()) {
-		view->m_settings = LoadViewSettings();
+		view->m_settings = settings;
 		if (!view->m_settings.smoothScroll) view->StopSmoothScroll();
 		if (!view->m_hWnd) continue;
 		view->m_layout = view->CapturedLayout();

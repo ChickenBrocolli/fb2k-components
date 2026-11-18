@@ -1,6 +1,8 @@
 #include "resource.h"
 #include "winres.h"
 
+#pragma code_page(65001)
+
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 IDD_COLUMNS_PAGE DIALOGEX 0, 0, 332, 214
@@ -26,7 +28,7 @@ BEGIN
     CONTROL         "Syntax help",IDC_COLUMN_SYNTAX,"Button",BS_OWNERDRAW | WS_TABSTOP,263,188,54,10
 END
 
-IDD_PREFERENCES DIALOGEX 0, 0, 332, 252
+IDD_PREFERENCES DIALOGEX 0, 0, 332, 246
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
@@ -57,16 +59,15 @@ BEGIN
     COMBOBOX        IDC_PREF_RATING,88,110,125,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     GROUPBOX        "Language",IDC_STATIC,227,98,98,30
     COMBOBOX        IDC_PREF_LANGUAGE,235,110,82,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "Scrolling",IDC_STATIC,7,132,318,38
-    AUTOCHECKBOX    "Smooth scrolling",IDC_PREF_SMOOTH,15,144,120,10
-    AUTOCHECKBOX    "Pin group headers",IDC_PREF_PIN_HEADERS,140,144,170,10
-    LTEXT           "Both also switch at once from the menu of a right-click on the column titles.",IDC_STATIC,15,157,300,8,SS_NOPREFIX
-    GROUPBOX        "Behaviour",IDC_STATIC,7,174,318,74
-    AUTOCHECKBOX    "Remember the group preset of each playlist",IDC_PREF_PRESET_PER_LIST,15,186,300,10
-    AUTOCHECKBOX    "Remember the scroll position of each playlist",IDC_PREF_SCROLL_PER_LIST,15,198,300,10
-    AUTOCHECKBOX    "Sort the playlist by clicking a column header",IDC_PREF_SORT_ON_CLICK,15,210,300,10
-    AUTOCHECKBOX    "Dim text in brackets",IDC_PREF_DIM_BRACKETS,15,222,300,10
-    AUTOCHECKBOX    "Bold the playing track",IDC_PREF_BOLD_PLAYING,15,234,300,10
+    GROUPBOX        "Behaviour",IDC_STATIC,7,132,318,74
+    AUTOCHECKBOX    "Remember the group preset of each playlist",IDC_PREF_PRESET_PER_LIST,15,144,300,10
+    AUTOCHECKBOX    "Remember the scroll position of each playlist",IDC_PREF_SCROLL_PER_LIST,15,156,300,10
+    AUTOCHECKBOX    "Sort the playlist by clicking a column header",IDC_PREF_SORT_ON_CLICK,15,168,300,10
+    AUTOCHECKBOX    "Dim text in brackets",IDC_PREF_DIM_BRACKETS,15,180,300,10
+    AUTOCHECKBOX    "Bold the playing track",IDC_PREF_BOLD_PLAYING,15,192,300,10
+    GROUPBOX        "Settings file",IDC_STATIC,7,210,318,32
+    PUSHBUTTON      "Export settings...",IDC_PREF_EXPORT,15,222,96,14
+    PUSHBUTTON      "Import settings...",IDC_PREF_IMPORT,117,222,96,14
 END
 
 IDD_GROUPS_PAGE DIALOGEX 0, 0, 332, 258
@@ -99,4 +100,47 @@ BEGIN
     EDITTEXT        IDC_PRESET_SORT,62,221,195,14,ES_AUTOHSCROLL
     PUSHBUTTON      "Insert field",IDC_PRESET_SORT_INSERT,261,221,56,14
     LTEXT           "",IDC_PRESET_PREVIEW,62,238,195,16,SS_NOPREFIX
+END
+
+IDD_SCROLL_PAGE DIALOGEX 0, 0, 332, 263
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "A change on this page shows at once in every panel. Apply keeps it; leaving without Apply goes back.",IDC_STATIC,7,4,318,16,SS_NOPREFIX
+    AUTOCHECKBOX    "Pin group headers",IDC_SCROLL_PIN,7,24,300,10
+    AUTOCHECKBOX    "Smooth scrolling",IDC_SCROLL_SMOOTH,7,37,300,10
+    LTEXT           "Both also switch at once from the menu of a right-click on the column titles.",IDC_STATIC,7,50,318,8,SS_NOPREFIX
+    LTEXT           "Preset",IDC_STATIC,19,70,40,8
+    COMBOBOX        IDC_SCROLL_PRESET,62,68,118,120,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "",IDC_SCROLL_MODIFIED,184,70,62,8,SS_NOPREFIX
+    PUSHBUTTON      "Remove",IDC_SCROLL_DELETE,250,68,68,14
+    LTEXT           "New name",IDC_STATIC,19,88,40,8
+    EDITTEXT        IDC_SCROLL_NEW_NAME,62,86,118,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "Save as new",IDC_SCROLL_SAVE_NEW,184,86,62,14
+    PUSHBUTTON      "Overwrite",IDC_SCROLL_OVERWRITE,250,86,68,14
+    LTEXT           "Glide length",IDC_STATIC,19,111,94,8
+    CONTROL         "",IDC_SCROLL_SLIDER_0,"msctls_trackbar32",TBS_HORZ | TBS_NOTICKS | TBS_BOTH | WS_TABSTOP,114,108,150,14
+    EDITTEXT        IDC_SCROLL_VALUE_0,268,109,36,13,ES_AUTOHSCROLL
+    LTEXT           "ms",IDC_STATIC,308,111,18,8,SS_NOPREFIX
+    LTEXT           "How long the view keeps sliding after a notch. Higher glides longer and softer.",IDC_STATIC,19,124,306,8,SS_NOPREFIX
+    LTEXT           "Distance per notch",IDC_STATIC,19,138,94,8
+    CONTROL         "",IDC_SCROLL_SLIDER_1,"msctls_trackbar32",TBS_HORZ | TBS_NOTICKS | TBS_BOTH | WS_TABSTOP,114,135,150,14
+    EDITTEXT        IDC_SCROLL_VALUE_1,268,136,36,13,ES_AUTOHSCROLL
+    LTEXT           "×",IDC_STATIC,308,138,18,8,SS_NOPREFIX
+    LTEXT           "1.00 moves as far as the Windows wheel setting (lines per notch).",IDC_STATIC,19,151,306,8,SS_NOPREFIX
+    LTEXT           "Quick-turn time",IDC_STATIC,19,165,94,8
+    CONTROL         "",IDC_SCROLL_SLIDER_2,"msctls_trackbar32",TBS_HORZ | TBS_NOTICKS | TBS_BOTH | WS_TABSTOP,114,162,150,14
+    EDITTEXT        IDC_SCROLL_VALUE_2,268,163,36,13,ES_AUTOHSCROLL
+    LTEXT           "ms",IDC_STATIC,308,165,18,8,SS_NOPREFIX
+    LTEXT           "Notches closer together than this count as a quick turn and speed up.",IDC_STATIC,19,178,306,8,SS_NOPREFIX
+    LTEXT           "Speed-up per quick notch",IDC_STATIC,19,192,94,8
+    CONTROL         "",IDC_SCROLL_SLIDER_3,"msctls_trackbar32",TBS_HORZ | TBS_NOTICKS | TBS_BOTH | WS_TABSTOP,114,189,150,14
+    EDITTEXT        IDC_SCROLL_VALUE_3,268,190,36,13,ES_AUTOHSCROLL
+    LTEXT           "How much harder each quick notch in a row pushes. 0 turns the speed-up off.",IDC_STATIC,19,205,306,8,SS_NOPREFIX
+    LTEXT           "Maximum speed-up",IDC_STATIC,19,219,94,8
+    CONTROL         "",IDC_SCROLL_SLIDER_4,"msctls_trackbar32",TBS_HORZ | TBS_NOTICKS | TBS_BOTH | WS_TABSTOP,114,216,150,14
+    EDITTEXT        IDC_SCROLL_VALUE_4,268,217,36,13,ES_AUTOHSCROLL
+    LTEXT           "×",IDC_STATIC,308,219,18,8,SS_NOPREFIX
+    LTEXT           "A push never grows past this many times a single notch.",IDC_STATIC,19,232,306,8,SS_NOPREFIX
+    PUSHBUTTON      "Reset to defaults",IDC_SCROLL_RESET,19,245,90,14
 END

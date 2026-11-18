@@ -134,25 +134,23 @@ SmoothScrollHelper::SmoothScrollHelper(HWND wnd, UINT messageId, UINT_PTR timerI
 	: m_wnd(wnd), m_messageId(messageId), m_timerId(timerId), m_currentPosition(std::move(currentPosition)),
 	m_clampPosition(std::move(clampPosition)), m_handleScroll(std::move(handleScroll)) {}
 
-void SmoothScrollHelper::DeltaScroll(int delta) {
+void SmoothScrollHelper::DeltaScroll(int delta, const smooth_scroll::InertiaParams& inertia) {
+	using namespace smooth_scroll;
 	const double now = NowMs();
-	const int current = m_currentPosition();
-	if (m_animation) {
-		smooth_scroll::ContinueAnimation(*m_animation, current, delta, now);
-	} else {
-		m_animation = smooth_scroll::StartAnimation(current, m_clampPosition(current + delta) - current, now);
-	}
+	if (!m_momentum) m_momentum = StartMomentum(m_currentPosition(), now, inertia);
+	Push(*m_momentum, delta, now, inertia);
 	const bool hadThread = m_timingThread.HasThread();
 	StartTimerThread();
 	if (!hadThread) OnMessage();
 }
 
-void SmoothScrollHelper::AbandonAnimation(bool updatePosition) {
-	if (!m_animation) return;
+void SmoothScrollHelper::AbandonAnimation() {
+	if (IsAnimating()) EndAnimation();
+}
+
+void SmoothScrollHelper::EndAnimation() {
 	PauseTimerThread();
-	const int target = m_animation->TargetPosition();
-	m_animation.reset();
-	if (updatePosition) m_handleScroll(target);
+	m_momentum.reset();
 }
 
 bool SmoothScrollHelper::ShouldAnimateWheel(int wheelDelta) {
@@ -160,21 +158,16 @@ bool SmoothScrollHelper::ShouldAnimateWheel(int wheelDelta) {
 }
 
 void SmoothScrollHelper::OnMessage() {
-	if (!m_timingThread.IsActive() || !m_animation) return;
-	Scroll();
+	if (m_timingThread.IsActive() && m_momentum) Coast();
 }
 
-// Moves to this frame's position. The animation ends at its target, or when the view stops short of the asked
-// position because it reached the top or the bottom.
-void SmoothScrollHelper::Scroll() {
-	const int asked = smooth_scroll::AnimatedPosition(*m_animation, NowMs());
+// Inertia: coasts to this frame's position. Ends when the coasting is spent or the view reached the top or the bottom.
+void SmoothScrollHelper::Coast() {
+	smooth_scroll::Advance(*m_momentum, NowMs());
+	const int asked = static_cast<int>(std::lround(m_momentum->position));
 	m_handleScroll(asked);
-	if (!m_animation) return;  // handleScroll ended it
-	const int reached = m_currentPosition();
-	if (reached != asked || reached == m_animation->TargetPosition()) {
-		PauseTimerThread();
-		m_animation.reset();
-	}
+	if (!m_momentum) return;  // handleScroll ended it
+	if (m_currentPosition() != asked || smooth_scroll::MomentumDone(*m_momentum)) EndAnimation();
 }
 
 void SmoothScrollHelper::OnTimer() {
@@ -185,7 +178,7 @@ void SmoothScrollHelper::OnTimer() {
 void SmoothScrollHelper::ShutDown() {
 	StopShutdownTimer();
 	m_timingThread.Stop();
-	m_animation.reset();
+	m_momentum.reset();
 }
 
 void SmoothScrollHelper::StartTimerThread() {

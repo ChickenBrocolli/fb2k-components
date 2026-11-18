@@ -38,7 +38,6 @@
 
 #define IDD_PREFERENCES      103
 
-#define IDC_PREF_SMOOTH             1201
 #define IDC_PREF_TRACK_FONT_CUSTOM  1202
 #define IDC_PREF_TRACK_FONT_BUTTON  1203
 #define IDC_PREF_TRACK_FONT_NAME    1204
@@ -59,8 +58,32 @@
 #define IDC_PREF_SORT_ON_CLICK      1219
 #define IDC_PREF_SCROLL_PER_LIST    1220
 #define IDC_PREF_BOLD_PLAYING       1221
-#define IDC_PREF_PIN_HEADERS        1222
 #define IDC_PREF_LANGUAGE           1223
+#define IDC_PREF_EXPORT             1224
+#define IDC_PREF_IMPORT             1225
+
+#define IDD_SCROLL_PAGE      104
+
+// One slider and one number box per smooth_scroll::InertiaParams value, in the order of kInertiaSettings.
+#define IDC_SCROLL_SLIDER_0         1301
+#define IDC_SCROLL_SLIDER_1         1302
+#define IDC_SCROLL_SLIDER_2         1303
+#define IDC_SCROLL_SLIDER_3         1304
+#define IDC_SCROLL_SLIDER_4         1305
+#define IDC_SCROLL_VALUE_0          1311
+#define IDC_SCROLL_VALUE_1          1312
+#define IDC_SCROLL_VALUE_2          1313
+#define IDC_SCROLL_VALUE_3          1314
+#define IDC_SCROLL_VALUE_4          1315
+#define IDC_SCROLL_RESET            1320
+#define IDC_SCROLL_SMOOTH           1322
+#define IDC_SCROLL_PIN              1323
+#define IDC_SCROLL_PRESET           1324
+#define IDC_SCROLL_MODIFIED         1325
+#define IDC_SCROLL_DELETE           1326
+#define IDC_SCROLL_NEW_NAME         1327
+#define IDC_SCROLL_SAVE_NEW         1328
+#define IDC_SCROLL_OVERWRITE        1329
 
 #ifndef IDC_STATIC
 #define IDC_STATIC           (-1)

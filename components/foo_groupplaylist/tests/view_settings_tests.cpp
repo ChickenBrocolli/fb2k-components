@@ -27,6 +27,23 @@ void TheDefaultsLieInsideTheirRanges() {
 	CHECK(kMinRowPadding <= kDefaultRowPadding && kDefaultRowPadding <= kMaxRowPadding);
 }
 
+void InertiaNumbersArePulledIntoTheirRanges() {
+	smooth_scroll::InertiaParams wild;
+	wild.tauMs = 5.0;
+	wild.distanceScale = 99.0;
+	wild.quickGapMs = std::nan("");
+	wild.accelerationStep = -1.0;
+	wild.maxAcceleration = 0.5;
+	const smooth_scroll::InertiaParams clamped = ClampInertiaParams(wild);
+	CHECK(clamped.tauMs == 30.0);
+	CHECK(clamped.distanceScale == 4.0);
+	CHECK(clamped.quickGapMs == 40.0);
+	CHECK(clamped.accelerationStep == 0.0);
+	CHECK(clamped.maxAcceleration == 1.0);
+	// The defaults are inside the ranges and stay as they are.
+	CHECK(ClampInertiaParams({}) == smooth_scroll::InertiaParams{});
+}
+
 } // namespace
 
 void RunViewSettingsTests() {
@@ -34,4 +51,5 @@ void RunViewSettingsTests() {
 	ACoverSizeOutsideTheRangeIsPulledIn();
 	ARowPaddingOutsideTheRangeIsPulledIn();
 	TheDefaultsLieInsideTheirRanges();
+	InertiaNumbersArePulledIntoTheirRanges();
 }

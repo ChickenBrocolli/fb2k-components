@@ -1,12 +1,14 @@
 #pragma once
 
+#include "scroll_presets.h"
 #include "view_settings_rules.h"
 
 // The look of every GroupPlaylist panel, set on the Preferences page and kept in the foobar2000 configuration.
 // smoothScroll and pinHeaders are also on the panel header menu, so their effect can be tried at once.
 // The panel background and track text colours are not here: they come from the Default UI colour settings.
 struct ViewSettings {
-	bool smoothScroll = false;
+	// On by default: a mouse wheel glides (smooth_scroll_math.h). A precision touchpad scrolls as it always does.
+	bool smoothScroll = true;
 	// Keeps the header of the group at the top in view while its tracks scroll under it.
 	bool pinHeaders = false;
 	// When false the panel uses the Default UI playlist font.
@@ -44,6 +46,20 @@ inline LOGFONTW FontAt96Dpi(LOGFONTW font, int dpi) {
 ViewSettings DefaultViewSettings();
 ViewSettings LoadViewSettings();
 void SaveViewSettings(const ViewSettings& settings);
+
+// The numbers of the Inertia + acceleration scroll style, set on the Scrolling page and kept apart from ViewSettings.
+// Every panel scrolls with the live numbers. The page changes them while it is open so a change can be felt at once;
+// Apply saves them, and a page closed without Apply puts the saved ones back.
+smooth_scroll::InertiaParams LoadInertiaParams();
+void SaveInertiaParams(const smooth_scroll::InertiaParams& params);
+const smooth_scroll::InertiaParams& LiveInertiaParams();
+void SetLiveInertiaParams(const smooth_scroll::InertiaParams& params);
+
+// The scroll preset last picked on the Scrolling page (its English key for a built-in one), and the user's presets.
+std::string LoadScrollPresetName();
+void SaveScrollPresetName(const std::string& name);
+std::vector<ScrollPreset> LoadUserScrollPresets();
+void SaveUserScrollPresets(const std::vector<ScrollPreset>& presets);
 
 // Whether the Duration column of the playing track counts down (-remaining / total) or up (elapsed / total).
 // A click on that cell switches it. Kept apart from the Preferences page values.

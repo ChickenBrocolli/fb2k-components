@@ -7,62 +7,82 @@
 #include <optional>
 
 // The arithmetic of smooth scrolling, kept apart from the window code so the unit tests build without Windows.
-// Adapted from the smooth scroll helper of ui_helpers by Reupen Shah (BSD-3-Clause, see THIRD-PARTY-NOTICES.txt),
-// the code Columns UI scrolls with.
+// The display-timed animation it drives is adapted from the smooth scroll helper of ui_helpers by Reupen Shah
+// (BSD-3-Clause, see THIRD-PARTY-NOTICES.txt).
 //
-// A wheel notch starts an animation that moves the view by the notch's distance in 250 ms, quickly at first
-// and slowly at the end (cubic ease-out). A notch that arrives while an animation runs adds its distance and
-// turns the rest into an even (linear) movement of half the time, so a spinning wheel keeps the view moving
-// and moves it faster the faster it spins.
+// Inertia: each wheel notch gives the view a push; the view coasts and slows down by friction. A notch from rest
+// moves exactly its distance (times distanceScale), quick notches add up their speed and push harder, and the view
+// coasts on after them. The numbers are set on the Scrolling preferences page.
 
 namespace smooth_scroll {
 
-inline constexpr double kDefaultDurationMs = 250.0;
 inline constexpr int kWheelDelta = 120;  // WHEEL_DELTA
 
-enum class Easing { Linear, CubicEaseOut };
+// The view moves at a speed that friction lowers by the factor e every tau milliseconds.
+// A push of d pixels adds d / tau to the speed, so from rest the view coasts exactly d pixels.
+// The page calls tau the glide length; it acts as the weight of what a notch pushes.
+struct InertiaParams {
+	double tauMs = 90.0;  // friction: how long and soft the glide is
+	double distanceScale = 1.0;  // times the distance of a notch (the Windows setting)
+	double quickGapMs = 120.0;  // notches closer together than this, in the same direction, are quick
+	double accelerationStep = 0.4;  // each quick notch in a row pushes this much harder
+	double maxAcceleration = 3.0;  // never harder than this many times a single notch
 
-// Times are milliseconds on one steady clock.
-struct Animation {
-	double startMs = 0;
-	int startPosition = 0;
-	int targetDelta = 0;
-	int lastDelta = 0;
-	double durationMs = kDefaultDurationMs;
-	Easing easing = Easing::CubicEaseOut;
-
-	int TargetPosition() const { return startPosition + targetDelta; }
+	bool operator==(const InertiaParams&) const = default;
 };
 
-// A new animation from the current position. clampedDelta is the distance that stays inside the view.
-// It starts 8 ms in the past, so the first frame already moves.
-inline Animation StartAnimation(int currentPosition, int clampedDelta, double nowMs, double durationMs = kDefaultDurationMs) {
-	return { nowMs - 8.0, currentPosition, clampedDelta, clampedDelta, durationMs, Easing::CubicEaseOut };
+inline constexpr double kInertiaTauMs = InertiaParams{}.tauMs;
+
+struct Momentum {
+	double position = 0;
+	double velocity = 0;  // pixels per millisecond
+	double lastMs = 0;
+	double lastPushMs = -1e9;
+	int streak = 0;  // quick pushes in a row
+	double tauMs = kInertiaTauMs;
+};
+
+inline Momentum StartMomentum(int currentPosition, double nowMs, const InertiaParams& params = {}) {
+	Momentum momentum;
+	momentum.position = currentPosition;
+	momentum.lastMs = nowMs - 8.0;
+	momentum.tauMs = params.tauMs;
+	return momentum;
 }
 
-// Adds a notch's distance to a running animation.
-inline void ContinueAnimation(Animation& animation, int currentPosition, int delta, double nowMs, double durationMs = kDefaultDurationMs) {
-	if (animation.easing == Easing::Linear && delta == animation.lastDelta) {
-		animation.targetDelta += delta;
-		animation.durationMs = nowMs - animation.startMs + durationMs / 2.0;
-		return;
+// How much harder a push counts after streak quick notches in a row.
+inline double AccelerationFactor(int streak, const InertiaParams& params = {}) {
+	return (std::max)(1.0, (std::min)(params.maxAcceleration, 1.0 + params.accelerationStep * streak));
+}
+
+inline void Push(Momentum& momentum, int delta, double nowMs, const InertiaParams& params = {}) {
+	if (momentum.velocity * delta < 0) {
+		// A turn the other way stops the coasting first, and its notch is a first notch again.
+		momentum.velocity = 0;
+		momentum.lastPushMs = -1e9;
 	}
-	animation.targetDelta += animation.startPosition - currentPosition + delta;
-	animation.lastDelta = delta;
-	animation.startPosition = currentPosition;
-	animation.durationMs = durationMs / 2.0;
-	animation.startMs = nowMs;
-	animation.easing = Easing::Linear;
+	if (params.tauMs != momentum.tauMs) {
+		// The friction was changed on the page: the coasting that is left keeps its distance.
+		momentum.velocity *= momentum.tauMs / params.tauMs;
+		momentum.tauMs = params.tauMs;
+	}
+	momentum.streak = nowMs - momentum.lastPushMs < params.quickGapMs ? momentum.streak + 1 : 0;
+	momentum.lastPushMs = nowMs;
+	momentum.velocity += delta * params.distanceScale * AccelerationFactor(momentum.streak, params) / momentum.tauMs;
 }
 
-// Where the view should be at nowMs, never past the start or the target.
-inline int AnimatedPosition(const Animation& animation, double nowMs) {
-	const double time = std::clamp((nowMs - animation.startMs) / animation.durationMs, 0.0, 1.0);
-	const double progress = animation.easing == Easing::Linear ? time : 1.0 - std::pow(1.0 - time, 3);
-	const int position = animation.startPosition + static_cast<int>(std::lround(animation.targetDelta * progress));
-	const int low = animation.startPosition + (std::min)(animation.targetDelta, 0);
-	const int high = animation.startPosition + (std::max)(animation.targetDelta, 0);
-	return std::clamp(position, low, high);
+// Moves the view to nowMs. The distance is the exact integral of the slowing speed, so the frame rate does not matter.
+inline void Advance(Momentum& momentum, double nowMs) {
+	const double elapsed = (std::max)(0.0, nowMs - momentum.lastMs);
+	const double decay = std::exp(-elapsed / momentum.tauMs);
+	momentum.position += momentum.velocity * momentum.tauMs * (1.0 - decay);
+	momentum.velocity *= decay;
+	momentum.lastMs = nowMs;
+}
+
+// Done when less than half a pixel of coasting is left.
+inline bool MomentumDone(const Momentum& momentum) {
+	return std::abs(momentum.velocity) * momentum.tauMs < 0.5;
 }
 
 // What the last wheel messages were, to tell a mouse wheel from a precision touchpad.

@@ -3,7 +3,8 @@
 // Smooth wheel scrolling timed to the display.
 // Adapted from smooth_scroll.h/.cpp of ui_helpers (https://github.com/reupen/ui_helpers),
 // Copyright (c) Reupen Shah, BSD-3-Clause. The license text is in THIRD-PARTY-NOTICES.txt.
-// Changes: vertical scrolling only; no wil, mmh or DirectComposition; the arithmetic lives in smooth_scroll_math.h.
+// Changes: vertical scrolling only; no wil, mmh or DirectComposition; the original eased animation is replaced by
+// inertia (smooth_scroll_math.h). The display-timed thread, frame skipping and idle shutdown are ui_helpers's.
 
 #include <atomic>
 #include <functional>
@@ -41,11 +42,11 @@ public:
 		ClampPositionFunc clampPosition, HandleScrollFunc handleScroll);
 	~SmoothScrollHelper() { ShutDown(); }
 
-	// Moves the view by delta pixels, adding to an animation that is running.
-	void DeltaScroll(int delta);
-	// Ends the animation. With updatePosition the view jumps to where the animation would have ended.
-	void AbandonAnimation(bool updatePosition);
-	bool IsAnimating() const { return m_animation.has_value(); }
+	// Pushes the view by delta pixels with these numbers, adding to the coasting that is running.
+	void DeltaScroll(int delta, const smooth_scroll::InertiaParams& inertia);
+	// Stops the coasting where the view is.
+	void AbandonAnimation();
+	bool IsAnimating() const { return m_momentum.has_value(); }
 	// Whether a wheel message should be animated: a mouse wheel yes, a precision touchpad no.
 	bool ShouldAnimateWheel(int wheelDelta);
 
@@ -54,7 +55,8 @@ public:
 	void ShutDown();
 
 private:
-	void Scroll();
+	void Coast();
+	void EndAnimation();
 	void StartTimerThread();
 	void PauseTimerThread();
 	void StartShutdownTimer();
@@ -66,7 +68,7 @@ private:
 	CurrentPositionFunc m_currentPosition;
 	ClampPositionFunc m_clampPosition;
 	HandleScrollFunc m_handleScroll;
-	std::optional<smooth_scroll::Animation> m_animation;
+	std::optional<smooth_scroll::Momentum> m_momentum;
 	smooth_scroll::WheelHistory m_wheelHistory;
 	bool m_shutdownTimerActive = false;
 	SmoothScrollTimingThread m_timingThread;

@@ -61,7 +61,7 @@ Right-click a **column title** to open the panel menu:
 |---|---|
 | **Columns** | Tick the columns to show. **Edit...** opens the Columns preferences page. |
 | **Groups** | Choose how this playlist is grouped. **None** shows a plain track list. **Sort playlist by this preset** sorts the playlist in the preset's order. **Edit...** opens the Groups preferences page. |
-| **Smooth scrolling** | Scrolls smoothly instead of line by line. |
+| **Smooth scrolling** | The mouse wheel glides to a stop instead of jumping line by line. On by default. A precision touchpad scrolls as usual. |
 | **Pin group headers** | Keeps the header of the group at the top of the panel while you scroll through it. |
 
 Other things you can do in the panel:
@@ -82,13 +82,14 @@ Open **File > Preferences > Tools > GroupPlaylist**.
 - **Colours and sizes**: colour of the group header text and of the labels, extra row height, album art size.
 - **Rating**: where a click on the stars saves the rating: **File tags**, **Playback Statistics**, or **Both**. The last two need the separate Playback Statistics component (`foo_playcount`). Without it they are greyed out and marked "(needs Playback Statistics)".
 - **Language**: **Automatic** follows the Windows display language (Korean on Korean Windows, English otherwise). **English** and **한국어** choose one. After **Apply** the panel and the page change at once. Reopen Preferences to see the page names in the new language.
-- **Scrolling**: smooth scrolling and pinned group headers, the same switches as in the panel menu.
 - **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, dim text in brackets such as `(Remastered)`, and show the playing track in bold.
+- **Settings file**: **Export settings...** saves every GroupPlaylist setting to a text file, and **Import settings...** loads one, for a backup or another computer. Per-playlist presets and scroll positions, ratings, and each panel's column layout are not in the file.
 
-Two pages sit below it:
+Three pages sit below it:
 
 - **Columns**: the built-in columns (locked, but you can choose which appear in the menu or duplicate one to change the copy) and your own columns. A column's text is a [title formatting](https://wiki.hydrogenaud.io/index.php?title=Foobar2000:Title_Formatting_Reference) pattern. **Insert field** adds common fields, and the preview shows the result for the focused track.
 - **Groups**: the presets. Each preset has a pattern for the group header, for the cover (tracks with the same value share one cover), for the labels inside a group (one per line), and for its sort order.
+- **Scrolling**: pinned group headers and smooth scrolling (the same switches as in the panel menu), and how the wheel glides: **Default**, **Light** (stops at once, hardly speeds up), **Heavy** (glides long, speeds up a lot when you spin the wheel), or your own sets, made from five numbers. A change shows at once while you scroll; **Apply** keeps it.
 
 ## Known limitations
 

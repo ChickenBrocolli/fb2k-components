@@ -52,6 +52,18 @@ public:
 	explicit ColumnsDialog(preferences_page_callback::ptr callback)
 		: m_callback(callback), m_reservedNames(BuiltInColumnNames()), m_builtInCount(m_reservedNames.size()) {
 		SetRows(BuiltInColumnDefsForMenu(LoadHiddenBuiltInColumns()), LoadCustomColumnDefs());
+		s_open = this;
+	}
+	~ColumnsDialog() { if (s_open == this) s_open = nullptr; }
+
+	// The page while it exists. foobar2000 keeps a page that was shown until Preferences closes.
+	static ColumnsDialog* s_open;
+
+	// Settings were imported: the page drops its edits and shows the saved columns.
+	void ReloadSaved() {
+		SetRows(BuiltInColumnDefsForMenu(LoadHiddenBuiltInColumns()), LoadCustomColumnDefs());
+		if (m_hWnd) FillList(FirstCustomRowOr(0));
+		m_callback->on_state_changed();
 	}
 
 	t_uint32 get_state() override {
@@ -348,7 +360,13 @@ public:
 
 preferences_page_factory_t<ColumnsPage> g_columns_page_factory;
 
+ColumnsDialog* ColumnsDialog::s_open = nullptr;
+
 } // namespace
+
+void ReloadColumnsPage() {
+	if (ColumnsDialog::s_open) ColumnsDialog::s_open->ReloadSaved();
+}
 
 void ShowColumnsPage() {
 	ui_control::get()->show_preferences(guid_columns_page);

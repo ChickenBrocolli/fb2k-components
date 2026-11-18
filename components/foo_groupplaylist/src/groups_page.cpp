@@ -69,6 +69,7 @@ public:
 	explicit GroupsDialog(preferences_page_callback::ptr callback) : m_callback(callback) {
 		const std::vector<GroupPreset> presets = LoadGroupPresets();
 		SetRows(presets);
+		s_open = this;
 		m_initialIndex = static_cast<int>(FindPresetByName(presets, g_presetToSelect).value_or(0));
 		g_presetToSelect.clear();
 	}
@@ -83,6 +84,18 @@ public:
 		if (!CheckNames()) return;
 		PlaylistView::ApplyGroupPresets(Presets(), Renames());
 		for (Row& row : m_rows) row.originalName = row.preset.name;
+		m_callback->on_state_changed();
+	}
+
+	~GroupsDialog() { if (s_open == this) s_open = nullptr; }
+
+	// The page while it exists. foobar2000 keeps a page that was shown until Preferences closes.
+	static GroupsDialog* s_open;
+
+	// Settings were imported: the page drops its edits and shows the saved presets.
+	void ReloadSaved() {
+		SetRows(LoadGroupPresets());
+		if (m_hWnd) FillList(0);
 		m_callback->on_state_changed();
 	}
 
@@ -374,6 +387,12 @@ public:
 preferences_page_factory_t<GroupsPage> g_groups_page_factory;
 
 } // namespace
+
+GroupsDialog* GroupsDialog::s_open = nullptr;
+
+void ReloadGroupsPage() {
+	if (GroupsDialog::s_open) GroupsDialog::s_open->ReloadSaved();
+}
 
 void ShowGroupsPage(const std::string& selectPreset) {
 	g_presetToSelect = selectPreset;

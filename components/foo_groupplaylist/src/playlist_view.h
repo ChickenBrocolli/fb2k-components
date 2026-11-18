@@ -52,6 +52,9 @@ public:
 	static void ApplyRatingStorage(RatingStorage storage);
 	// Saves the look set on the Preferences page and redraws every panel with it.
 	static void ApplyViewSettings(const ViewSettings& settings);
+	// Redraws every panel with these settings without saving them, so the Scrolling page can show a change at once.
+	// ApplyViewSettings, or this with LoadViewSettings(), puts the saved ones back.
+	static void ShowViewSettings(const ViewSettings& settings);
 	// The playlist font of the host. The panel uses it unless the Preferences page sets another font.
 	void SetHostFont(HFONT font);
 	// Saves the shared presets and updates every panel. renames pairs an old name with its new name.

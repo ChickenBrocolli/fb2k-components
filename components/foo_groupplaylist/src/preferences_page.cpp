@@ -7,13 +7,14 @@
 #include "preferences_pages.h"
 #include "rating_store.h"
 #include "resource.h"
+#include "settings_transfer.h"
 #include "ui_language.h"
 #include "view_settings.h"
 
 namespace {
 
 // The page edits a copy. Apply saves the copy and redraws every panel, as foobar2000 preferences pages do.
-// Smooth scrolling and header pinning are also switched from the panel header menu. The page follows such a switch (MenuTogglesChanged).
+// Smooth scrolling and header pinning belong to the Scrolling page; this page leaves them as saved.
 struct PageValues {
 	ViewSettings view;
 	RatingStorage rating;
@@ -22,7 +23,7 @@ struct PageValues {
 	bool operator==(const PageValues& other) const {
 		const ViewSettings& a = view;
 		const ViewSettings& b = other.view;
-		return rating == other.rating && language == other.language && a.smoothScroll == b.smoothScroll && a.pinHeaders == b.pinHeaders &&
+		return rating == other.rating && language == other.language &&
 			a.customTrackFont == b.customTrackFont && memcmp(&a.trackFont, &b.trackFont, sizeof(LOGFONTW)) == 0 &&
 			a.customHeaderFont == b.customHeaderFont && memcmp(&a.headerFont, &b.headerFont, sizeof(LOGFONTW)) == 0 &&
 			a.headerColor == b.headerColor && a.labelColor == b.labelColor &&
@@ -36,6 +37,9 @@ struct PageValues {
 PageValues SavedValues() {
 	return { LoadViewSettings(), GetRatingStorage(), GetUiLanguage() };
 }
+
+// The title of the page's message boxes.
+const wchar_t kMessageTitle[] = L"GroupPlaylist";
 
 // The DPI of the screen, which the font dialog sizes its fonts for.
 int ScreenDpi() {
@@ -53,21 +57,7 @@ class PreferencesDialog : public CDialogImpl<PreferencesDialog>, public preferen
 public:
 	enum { IDD = IDD_PREFERENCES };
 
-	explicit PreferencesDialog(preferences_page_callback::ptr callback) : m_callback(callback), m_values(SavedValues()) { s_open = this; }
-	~PreferencesDialog() { if (s_open == this) s_open = nullptr; }
-
-	// The page while it is open, so a switch from the panel header menu shows on it.
-	static PreferencesDialog* s_open;
-
-	void TakeMenuToggles() {
-		if (!m_hWnd) return;
-		const ViewSettings saved = LoadViewSettings();
-		m_values.view.smoothScroll = saved.smoothScroll;
-		m_values.view.pinHeaders = saved.pinHeaders;
-		CheckDlgButton(IDC_PREF_SMOOTH, saved.smoothScroll ? BST_CHECKED : BST_UNCHECKED);
-		CheckDlgButton(IDC_PREF_PIN_HEADERS, saved.pinHeaders ? BST_CHECKED : BST_UNCHECKED);
-		m_callback->on_state_changed();
-	}
+	explicit PreferencesDialog(preferences_page_callback::ptr callback) : m_callback(callback), m_values(SavedValues()) {}
 
 	t_uint32 get_state() override {
 		t_uint32 state = preferences_state::resettable | preferences_state::dark_mode_supported;
@@ -80,7 +70,11 @@ public:
 		if (languageChanged) SetUiLanguage(m_values.language);
 		if (m_values.rating != GetRatingStorage()) PlaylistView::ApplyRatingStorage(m_values.rating);
 		// This also redraws the column titles and track counts, so a new language shows in every panel.
-		PlaylistView::ApplyViewSettings(m_values.view);
+		ViewSettings view = m_values.view;
+		const ViewSettings saved = LoadViewSettings();
+		view.smoothScroll = saved.smoothScroll;
+		view.pinHeaders = saved.pinHeaders;
+		PlaylistView::ApplyViewSettings(view);
 		if (languageChanged) {
 			m_texts.Retranslate();
 			FillChoices();
@@ -98,8 +92,6 @@ public:
 	BEGIN_MSG_MAP_EX(PreferencesDialog)
 		MSG_WM_INITDIALOG(OnInitDialog)
 		MSG_WM_DRAWITEM(OnDrawItem)
-		COMMAND_ID_HANDLER_EX(IDC_PREF_SMOOTH, OnCheckChanged)
-		COMMAND_ID_HANDLER_EX(IDC_PREF_PIN_HEADERS, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_TRACK_FONT_CUSTOM, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_FONT_CUSTOM, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_PRESET_PER_LIST, OnCheckChanged)
@@ -115,6 +107,8 @@ public:
 		COMMAND_HANDLER_EX(IDC_PREF_COVER_SIZE, EN_CHANGE, OnNumberChanged)
 		COMMAND_HANDLER_EX(IDC_PREF_RATING, CBN_SELCHANGE, OnRatingChanged)
 		COMMAND_HANDLER_EX(IDC_PREF_LANGUAGE, CBN_SELCHANGE, OnLanguageChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_EXPORT, OnExport)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_IMPORT, OnImport)
 	END_MSG_MAP()
 
 private:
@@ -155,8 +149,6 @@ private:
 		const bool wasShowing = m_showing;
 		m_showing = true;
 		const ViewSettings& view = m_values.view;
-		CheckDlgButton(IDC_PREF_SMOOTH, view.smoothScroll ? BST_CHECKED : BST_UNCHECKED);
-		CheckDlgButton(IDC_PREF_PIN_HEADERS, view.pinHeaders ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_TRACK_FONT_CUSTOM, view.customTrackFont ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_HEADER_FONT_CUSTOM, view.customHeaderFont ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_PRESET_PER_LIST, view.presetPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
@@ -194,8 +186,6 @@ private:
 		const bool checked = IsDlgButtonChecked(id) == BST_CHECKED;
 		ViewSettings& view = m_values.view;
 		switch (id) {
-		case IDC_PREF_SMOOTH: view.smoothScroll = checked; break;
-		case IDC_PREF_PIN_HEADERS: view.pinHeaders = checked; break;
 		case IDC_PREF_TRACK_FONT_CUSTOM: view.customTrackFont = checked; break;
 		case IDC_PREF_HEADER_FONT_CUSTOM: view.customHeaderFont = checked; break;
 		case IDC_PREF_PRESET_PER_LIST: view.presetPerPlaylist = checked; break;
@@ -254,6 +244,46 @@ private:
 		Changed();
 	}
 
+	// The settings as saved, not the unapplied changes on this page.
+	void OnExport(UINT, int, CWindow) {
+		const std::optional<std::wstring> path = AskSettingsFile(m_hWnd, true);
+		if (!path) return;
+		if (!WriteSettingsFile(*path, ExportSettingsText())) {
+			MessageBox(TrW("The settings could not be saved to this file.").c_str(), kMessageTitle, MB_OK | MB_ICONWARNING);
+			return;
+		}
+		MessageBox(TrW("The settings were saved.").c_str(), kMessageTitle, MB_OK | MB_ICONINFORMATION);
+	}
+
+	void OnImport(UINT, int, CWindow) {
+		const std::optional<std::wstring> path = AskSettingsFile(m_hWnd, false);
+		if (!path) return;
+		const std::optional<std::string> text = ReadSettingsFile(*path);
+		if (!text) {
+			MessageBox(TrW("This file could not be read.").c_str(), kMessageTitle, MB_OK | MB_ICONWARNING);
+			return;
+		}
+		if (!IsSettingsText(*text)) {
+			MessageBox(TrW("This is not a GroupPlaylist settings file.").c_str(), kMessageTitle, MB_OK | MB_ICONWARNING);
+			return;
+		}
+		const std::wstring question = TrW("Replace the current GroupPlaylist settings with the settings in this file? Changes on this page that were not applied are lost.");
+		if (MessageBox(question.c_str(), kMessageTitle, MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+		const UiLanguage language = GetUiLanguage();
+		ImportSettingsText(*text);
+		ReloadColumnsPage();
+		ReloadGroupsPage();
+		ReloadScrollingPage();
+		m_values = SavedValues();
+		if (GetUiLanguage() != language) {
+			m_texts.Retranslate();
+			FillChoices();
+		}
+		ShowValues();
+		m_callback->on_state_changed();
+		MessageBox(TrW("The settings were loaded.").c_str(), kMessageTitle, MB_OK | MB_ICONINFORMATION);
+	}
+
 	void OnDrawItem(int id, LPDRAWITEMSTRUCT item) {
 		if (id != IDC_PREF_HEADER_SWATCH && id != IDC_PREF_LABEL_SWATCH) {
 			SetMsgHandled(FALSE);
@@ -273,8 +303,6 @@ private:
 	DialogTexts m_texts;
 };
 
-PreferencesDialog* PreferencesDialog::s_open = nullptr;
-
 class PreferencesPage : public preferences_page_impl<PreferencesDialog> {
 public:
 	const char* get_name() override { return "GroupPlaylist"; }
@@ -287,6 +315,3 @@ preferences_page_factory_t<PreferencesPage> g_preferences_page_factory;
 
 } // namespace
 
-void MenuTogglesChanged() {
-	if (PreferencesDialog::s_open) PreferencesDialog::s_open->TakeMenuToggles();
-}

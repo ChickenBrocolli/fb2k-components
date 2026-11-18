@@ -2,6 +2,8 @@
 
 #include "view_settings.h"
 
+#include <optional>
+
 namespace {
 
 // Each setting has its own configuration entry, so a setting added later leaves the saved ones alone.
@@ -45,6 +47,18 @@ cfg_bool cfg_scrollPerPlaylist(SettingGuid(13), kDefaults.scrollPerPlaylist);
 cfg_bool cfg_boldPlaying(SettingGuid(14), kDefaults.boldPlaying);
 cfg_bool cfg_durationCountsDown(SettingGuid(15), false);
 cfg_bool cfg_pinHeaders(SettingGuid(16), kDefaults.pinHeaders);
+// SettingGuid(17) was the scroll style of the test menu, which is gone. Do not reuse it.
+const smooth_scroll::InertiaParams kDefaultInertia;
+cfg_float cfg_inertiaTau(SettingGuid(18), kDefaultInertia.tauMs);
+cfg_float cfg_inertiaDistance(SettingGuid(19), kDefaultInertia.distanceScale);
+cfg_float cfg_inertiaQuickGap(SettingGuid(20), kDefaultInertia.quickGapMs);
+cfg_float cfg_inertiaStep(SettingGuid(21), kDefaultInertia.accelerationStep);
+cfg_float cfg_inertiaMax(SettingGuid(22), kDefaultInertia.maxAcceleration);
+cfg_string cfg_scrollPresetName(SettingGuid(23), kDefaultScrollPresetName);
+cfg_string cfg_userScrollPresets(SettingGuid(24), "");
+
+// The numbers the panels scroll with: the saved ones until the Scrolling page changes them.
+std::optional<smooth_scroll::InertiaParams> g_liveInertia;
 
 } // namespace
 
@@ -88,6 +102,51 @@ void SaveViewSettings(const ViewSettings& settings) {
 	cfg_scrollPerPlaylist = settings.scrollPerPlaylist;
 	cfg_boldPlaying = settings.boldPlaying;
 	cfg_pinHeaders = settings.pinHeaders;
+}
+
+smooth_scroll::InertiaParams LoadInertiaParams() {
+	smooth_scroll::InertiaParams params;
+	params.tauMs = cfg_inertiaTau;
+	params.distanceScale = cfg_inertiaDistance;
+	params.quickGapMs = cfg_inertiaQuickGap;
+	params.accelerationStep = cfg_inertiaStep;
+	params.maxAcceleration = cfg_inertiaMax;
+	return ClampInertiaParams(params);
+}
+
+void SaveInertiaParams(const smooth_scroll::InertiaParams& params) {
+	const smooth_scroll::InertiaParams clamped = ClampInertiaParams(params);
+	cfg_inertiaTau = clamped.tauMs;
+	cfg_inertiaDistance = clamped.distanceScale;
+	cfg_inertiaQuickGap = clamped.quickGapMs;
+	cfg_inertiaStep = clamped.accelerationStep;
+	cfg_inertiaMax = clamped.maxAcceleration;
+	g_liveInertia = clamped;
+}
+
+const smooth_scroll::InertiaParams& LiveInertiaParams() {
+	if (!g_liveInertia) g_liveInertia = LoadInertiaParams();
+	return *g_liveInertia;
+}
+
+void SetLiveInertiaParams(const smooth_scroll::InertiaParams& params) {
+	g_liveInertia = ClampInertiaParams(params);
+}
+
+std::string LoadScrollPresetName() {
+	return cfg_scrollPresetName.get().c_str();
+}
+
+void SaveScrollPresetName(const std::string& name) {
+	cfg_scrollPresetName = name.c_str();
+}
+
+std::vector<ScrollPreset> LoadUserScrollPresets() {
+	return ParseScrollPresets(cfg_userScrollPresets.get().c_str());
+}
+
+void SaveUserScrollPresets(const std::vector<ScrollPreset>& presets) {
+	cfg_userScrollPresets = SerializeScrollPresets(presets).c_str();
 }
 
 bool GetDurationCountsDown() {
