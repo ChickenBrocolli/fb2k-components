@@ -1,0 +1,67 @@
+#pragma once
+
+#define IDD_COLUMNS_PAGE     101
+
+#define IDC_COLUMN_LIST      1001
+#define IDC_COLUMN_NEW       1002
+#define IDC_COLUMN_DELETE    1003
+#define IDC_COLUMN_NAME      1004
+#define IDC_COLUMN_PATTERN   1005
+#define IDC_COLUMN_ALIGN     1006
+#define IDC_COLUMN_SYNTAX    1007
+#define IDC_COLUMN_INSERT    1008
+#define IDC_COLUMN_PREVIEW   1009
+#define IDC_COLUMN_UP        1010
+#define IDC_COLUMN_DOWN      1011
+#define IDC_COLUMN_DUPLICATE 1012
+
+#define IDD_GROUPS_PAGE      102
+
+#define IDC_PRESET_LIST             1101
+#define IDC_PRESET_NEW              1102
+#define IDC_PRESET_DELETE           1103
+#define IDC_PRESET_NAME             1104
+#define IDC_PRESET_HEADER           1105
+#define IDC_PRESET_HEADER_INSERT    1106
+#define IDC_PRESET_COVER            1107
+#define IDC_PRESET_COVER_INSERT     1108
+#define IDC_PRESET_COVER_TEXT       1109
+#define IDC_PRESET_SUBGROUPS        1110
+#define IDC_PRESET_SUBGROUP_INSERT  1111
+#define IDC_PRESET_PREVIEW          1112
+#define IDC_PRESET_SYNTAX           1113
+#define IDC_PRESET_HIDE_UNIFORM     1114
+#define IDC_PRESET_UP               1115
+#define IDC_PRESET_DOWN             1116
+#define IDC_PRESET_SORT             1117
+#define IDC_PRESET_SORT_INSERT      1118
+
+#define IDD_PREFERENCES      103
+
+#define IDC_PREF_SMOOTH             1201
+#define IDC_PREF_TRACK_FONT_CUSTOM  1202
+#define IDC_PREF_TRACK_FONT_BUTTON  1203
+#define IDC_PREF_TRACK_FONT_NAME    1204
+#define IDC_PREF_HEADER_FONT_CUSTOM 1205
+#define IDC_PREF_HEADER_FONT_BUTTON 1206
+#define IDC_PREF_HEADER_FONT_NAME   1207
+#define IDC_PREF_HEADER_COLOR       1208
+#define IDC_PREF_HEADER_SWATCH      1209
+#define IDC_PREF_LABEL_COLOR        1210
+#define IDC_PREF_LABEL_SWATCH       1211
+#define IDC_PREF_ROW_PADDING        1212
+#define IDC_PREF_ROW_PADDING_SPIN   1213
+#define IDC_PREF_COVER_SIZE         1214
+#define IDC_PREF_COVER_SIZE_SPIN    1215
+#define IDC_PREF_RATING             1216
+#define IDC_PREF_PRESET_PER_LIST    1217
+#define IDC_PREF_DIM_BRACKETS       1218
+#define IDC_PREF_SORT_ON_CLICK      1219
+#define IDC_PREF_SCROLL_PER_LIST    1220
+#define IDC_PREF_BOLD_PLAYING       1221
+#define IDC_PREF_PIN_HEADERS        1222
+#define IDC_PREF_LANGUAGE           1223
+
+#ifndef IDC_STATIC
+#define IDC_STATIC           (-1)
+#endif

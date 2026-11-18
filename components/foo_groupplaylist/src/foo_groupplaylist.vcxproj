@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{A121E8D4-6178-41FE-9CE8-6893911701F8}</ProjectGuid>
+    <RootNamespace>foo_groupplaylist</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <RepoRoot>$(MSBuildProjectDirectory)\..\..\..\</RepoRoot>
+    <SdkRoot>$(RepoRoot)foobar2000_SDK\</SdkRoot>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization Condition="'$(Configuration)'=='Release'">true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(RepoRoot)build\$(Configuration)\</OutDir>
+    <IntDir>$(RepoRoot)build\obj\$(ProjectName)\$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <AdditionalIncludeDirectories>$(SdkRoot);$(SdkRoot)foobar2000;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>$(SdkRoot)foobar2000\shared\shared-$(Platform).lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+    </ClCompile>
+    <Link>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="PCH.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="column_store.cpp" />
+    <ClCompile Include="component.cpp" />
+    <ClCompile Include="cover_cache.cpp" />
+    <ClCompile Include="columns_page.cpp" />
+    <ClCompile Include="groups_page.cpp" />
+    <ClCompile Include="panel.cpp" />
+    <ClCompile Include="pattern_tools.cpp" />
+    <ClCompile Include="playlist_view.cpp" />
+    <ClCompile Include="preferences_page.cpp" />
+    <ClCompile Include="preset_store.cpp" />
+    <ClCompile Include="rating_store.cpp" />
+    <ClCompile Include="ui_language.cpp" />
+    <ClCompile Include="view_settings.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="column_def.h" />
+    <ClInclude Include="column_store.h" />
+    <ClInclude Include="checked_list.h" />
+    <ClInclude Include="link_button.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="cover_cache.h" />
+    <ClInclude Include="group_preset.h" />
+    <ClInclude Include="preferences_pages.h" />
+    <ClInclude Include="group_model.h" />
+    <ClInclude Include="pattern_tools.h" />
+    <ClInclude Include="playlist_view.h" />
+    <ClInclude Include="preset_store.h" />
+    <ClInclude Include="rating_cell.h" />
+    <ClInclude Include="rating_store.h" />
+    <ClInclude Include="ui_language.h" />
+    <ClInclude Include="ui_text.h" />
+    <ClInclude Include="view_settings.h" />
+    <ClInclude Include="view_settings_rules.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="tab_lines.h" />
+    <ClInclude Include="text_parts.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="foo_groupplaylist.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(SdkRoot)libPPUI\libPPUI.vcxproj">
+      <Project>{7729eb82-4069-4414-964b-ad399091a03f}</Project>
+    </ProjectReference>
+    <ProjectReference Include="$(SdkRoot)pfc\pfc.vcxproj">
+      <Project>{ebfffb4e-261d-44d3-b89c-957b31a0bf9c}</Project>
+    </ProjectReference>
+    <ProjectReference Include="$(SdkRoot)foobar2000\foobar2000_component_client\foobar2000_component_client.vcxproj">
+      <Project>{71ad2674-065b-48f5-b8b0-e1f9d3892081}</Project>
+    </ProjectReference>
+    <ProjectReference Include="$(SdkRoot)foobar2000\helpers\foobar2000_sdk_helpers.vcxproj">
+      <Project>{ee47764e-a202-4f85-a767-abdab4aff35f}</Project>
+    </ProjectReference>
+    <ProjectReference Include="$(SdkRoot)foobar2000\SDK\foobar2000_SDK.vcxproj">
+      <Project>{e8091321-d79d-4575-86ef-064ea1a4a20d}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <WtlIncludeDir>$(MSBuildThisFileDirectory)third_party\wtl\lib\native\include</WtlIncludeDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(WtlIncludeDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(WtlIncludeDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+</Project>

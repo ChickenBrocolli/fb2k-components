@@ -1,0 +1,292 @@
+#include "stdafx.h"
+
+#include <helpers/atl-misc.h>
+#include <helpers/DarkMode.h>
+
+#include "playlist_view.h"
+#include "preferences_pages.h"
+#include "rating_store.h"
+#include "resource.h"
+#include "ui_language.h"
+#include "view_settings.h"
+
+namespace {
+
+// The page edits a copy. Apply saves the copy and redraws every panel, as foobar2000 preferences pages do.
+// Smooth scrolling and header pinning are also switched from the panel header menu. The page follows such a switch (MenuTogglesChanged).
+struct PageValues {
+	ViewSettings view;
+	RatingStorage rating;
+	UiLanguage language;
+
+	bool operator==(const PageValues& other) const {
+		const ViewSettings& a = view;
+		const ViewSettings& b = other.view;
+		return rating == other.rating && language == other.language && a.smoothScroll == b.smoothScroll && a.pinHeaders == b.pinHeaders &&
+			a.customTrackFont == b.customTrackFont && memcmp(&a.trackFont, &b.trackFont, sizeof(LOGFONTW)) == 0 &&
+			a.customHeaderFont == b.customHeaderFont && memcmp(&a.headerFont, &b.headerFont, sizeof(LOGFONTW)) == 0 &&
+			a.headerColor == b.headerColor && a.labelColor == b.labelColor &&
+			a.rowPadding == b.rowPadding && a.coverSize == b.coverSize &&
+			a.presetPerPlaylist == b.presetPerPlaylist && a.dimBrackets == b.dimBrackets &&
+			a.sortOnHeaderClick == b.sortOnHeaderClick && a.scrollPerPlaylist == b.scrollPerPlaylist &&
+			a.boldPlaying == b.boldPlaying;
+	}
+};
+
+PageValues SavedValues() {
+	return { LoadViewSettings(), GetRatingStorage(), GetUiLanguage() };
+}
+
+// The DPI of the screen, which the font dialog sizes its fonts for.
+int ScreenDpi() {
+	CWindowDC screen(NULL);
+	return screen.GetDeviceCaps(LOGPIXELSY);
+}
+
+// The saved fonts are at 96 DPI (view_settings.h), so the point size comes from 96 pixels per inch.
+std::wstring DescribeFont(const LOGFONTW& font) {
+	const int points = MulDiv(font.lfHeight < 0 ? -font.lfHeight : font.lfHeight, 72, 96);
+	return std::wstring(font.lfFaceName) + L", " + std::to_wstring(points) + L" pt" + (font.lfWeight >= FW_BOLD ? TrW(", bold") : L"");
+}
+
+class PreferencesDialog : public CDialogImpl<PreferencesDialog>, public preferences_page_instance {
+public:
+	enum { IDD = IDD_PREFERENCES };
+
+	explicit PreferencesDialog(preferences_page_callback::ptr callback) : m_callback(callback), m_values(SavedValues()) { s_open = this; }
+	~PreferencesDialog() { if (s_open == this) s_open = nullptr; }
+
+	// The page while it is open, so a switch from the panel header menu shows on it.
+	static PreferencesDialog* s_open;
+
+	void TakeMenuToggles() {
+		if (!m_hWnd) return;
+		const ViewSettings saved = LoadViewSettings();
+		m_values.view.smoothScroll = saved.smoothScroll;
+		m_values.view.pinHeaders = saved.pinHeaders;
+		CheckDlgButton(IDC_PREF_SMOOTH, saved.smoothScroll ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_PIN_HEADERS, saved.pinHeaders ? BST_CHECKED : BST_UNCHECKED);
+		m_callback->on_state_changed();
+	}
+
+	t_uint32 get_state() override {
+		t_uint32 state = preferences_state::resettable | preferences_state::dark_mode_supported;
+		if (!(m_values == SavedValues())) state |= preferences_state::changed;
+		return state;
+	}
+
+	void apply() override {
+		const bool languageChanged = m_values.language != GetUiLanguage();
+		if (languageChanged) SetUiLanguage(m_values.language);
+		if (m_values.rating != GetRatingStorage()) PlaylistView::ApplyRatingStorage(m_values.rating);
+		// This also redraws the column titles and track counts, so a new language shows in every panel.
+		PlaylistView::ApplyViewSettings(m_values.view);
+		if (languageChanged) {
+			m_texts.Retranslate();
+			FillChoices();
+			ShowValues();
+		}
+		m_callback->on_state_changed();
+	}
+
+	void reset() override {
+		m_values = { DefaultViewSettings(), RatingStorage::FileTags, UiLanguage::Automatic };
+		ShowValues();
+		m_callback->on_state_changed();
+	}
+
+	BEGIN_MSG_MAP_EX(PreferencesDialog)
+		MSG_WM_INITDIALOG(OnInitDialog)
+		MSG_WM_DRAWITEM(OnDrawItem)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_SMOOTH, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_PIN_HEADERS, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_TRACK_FONT_CUSTOM, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_FONT_CUSTOM, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_PRESET_PER_LIST, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_DIM_BRACKETS, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_SORT_ON_CLICK, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_SCROLL_PER_LIST, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_BOLD_PLAYING, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_TRACK_FONT_BUTTON, OnChooseFont)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_FONT_BUTTON, OnChooseFont)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_COLOR, OnChooseColor)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_LABEL_COLOR, OnChooseColor)
+		COMMAND_HANDLER_EX(IDC_PREF_ROW_PADDING, EN_CHANGE, OnNumberChanged)
+		COMMAND_HANDLER_EX(IDC_PREF_COVER_SIZE, EN_CHANGE, OnNumberChanged)
+		COMMAND_HANDLER_EX(IDC_PREF_RATING, CBN_SELCHANGE, OnRatingChanged)
+		COMMAND_HANDLER_EX(IDC_PREF_LANGUAGE, CBN_SELCHANGE, OnLanguageChanged)
+	END_MSG_MAP()
+
+private:
+	BOOL OnInitDialog(CWindow, LPARAM) {
+		m_dark.AddDialogWithControls(*this);
+		m_texts.Translate(*this);
+		CUpDownCtrl(GetDlgItem(IDC_PREF_ROW_PADDING_SPIN)).SetRange(kMinRowPadding, kMaxRowPadding);
+		CUpDownCtrl(GetDlgItem(IDC_PREF_COVER_SIZE_SPIN)).SetRange(kMinCoverSize, kMaxCoverSize);
+		FillChoices();
+		ShowValues();
+		m_showing = false;
+		return FALSE;
+	}
+
+	// The texts of the two drop-down lists, in the current language. ShowValues selects the saved items.
+	void FillChoices() {
+		const std::wstring missing = IsPlaybackStatisticsInstalled() ? L"" : TrW(" (needs Playback Statistics)");
+		CComboBox rating(GetDlgItem(IDC_PREF_RATING));
+		rating.ResetContent();
+		rating.AddString(TrW("File tags").c_str());
+		rating.AddString((TrW("Playback Statistics") + missing).c_str());
+		rating.AddString((TrW("Both") + missing).c_str());
+		// The list opens wide enough for the longest item, which the narrow box cuts off.
+		CRect box;
+		rating.GetWindowRect(box);
+		rating.SetDroppedWidth(box.Width() * 2);
+		// The order follows UiLanguage.
+		CComboBox language(GetDlgItem(IDC_PREF_LANGUAGE));
+		language.ResetContent();
+		language.AddString(TrW("Automatic").c_str());
+		language.AddString(L"English");
+		language.AddString(L"한국어");
+		language.GetWindowRect(box);
+		language.SetDroppedWidth(box.Width() * 3 / 2);
+	}
+
+	void ShowValues() {
+		const bool wasShowing = m_showing;
+		m_showing = true;
+		const ViewSettings& view = m_values.view;
+		CheckDlgButton(IDC_PREF_SMOOTH, view.smoothScroll ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_PIN_HEADERS, view.pinHeaders ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_TRACK_FONT_CUSTOM, view.customTrackFont ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_HEADER_FONT_CUSTOM, view.customHeaderFont ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_PRESET_PER_LIST, view.presetPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_DIM_BRACKETS, view.dimBrackets ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_SORT_ON_CLICK, view.sortOnHeaderClick ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_SCROLL_PER_LIST, view.scrollPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_BOLD_PLAYING, view.boldPlaying ? BST_CHECKED : BST_UNCHECKED);
+		// The spin buttons own the number in their edit box, so the number is set through them.
+		CUpDownCtrl(GetDlgItem(IDC_PREF_ROW_PADDING_SPIN)).SetPos32(view.rowPadding);
+		CUpDownCtrl(GetDlgItem(IDC_PREF_COVER_SIZE_SPIN)).SetPos32(view.coverSize);
+		CComboBox(GetDlgItem(IDC_PREF_RATING)).SetCurSel(static_cast<int>(m_values.rating));
+		CComboBox(GetDlgItem(IDC_PREF_LANGUAGE)).SetCurSel(static_cast<int>(m_values.language));
+		m_showing = wasShowing;
+		ShowFontsAndColors();
+	}
+
+	void ShowFontsAndColors() {
+		const ViewSettings& view = m_values.view;
+		SetDlgItemText(IDC_PREF_TRACK_FONT_NAME, DescribeFont(view.trackFont).c_str());
+		SetDlgItemText(IDC_PREF_HEADER_FONT_NAME, DescribeFont(view.headerFont).c_str());
+		GetDlgItem(IDC_PREF_TRACK_FONT_BUTTON).EnableWindow(view.customTrackFont);
+		GetDlgItem(IDC_PREF_TRACK_FONT_NAME).EnableWindow(view.customTrackFont);
+		GetDlgItem(IDC_PREF_HEADER_FONT_BUTTON).EnableWindow(view.customHeaderFont);
+		GetDlgItem(IDC_PREF_HEADER_FONT_NAME).EnableWindow(view.customHeaderFont);
+		GetDlgItem(IDC_PREF_HEADER_SWATCH).Invalidate();
+		GetDlgItem(IDC_PREF_LABEL_SWATCH).Invalidate();
+	}
+
+	void Changed() {
+		ShowFontsAndColors();
+		m_callback->on_state_changed();
+	}
+
+	void OnCheckChanged(UINT, int id, CWindow) {
+		const bool checked = IsDlgButtonChecked(id) == BST_CHECKED;
+		ViewSettings& view = m_values.view;
+		switch (id) {
+		case IDC_PREF_SMOOTH: view.smoothScroll = checked; break;
+		case IDC_PREF_PIN_HEADERS: view.pinHeaders = checked; break;
+		case IDC_PREF_TRACK_FONT_CUSTOM: view.customTrackFont = checked; break;
+		case IDC_PREF_HEADER_FONT_CUSTOM: view.customHeaderFont = checked; break;
+		case IDC_PREF_PRESET_PER_LIST: view.presetPerPlaylist = checked; break;
+		case IDC_PREF_DIM_BRACKETS: view.dimBrackets = checked; break;
+		case IDC_PREF_SORT_ON_CLICK: view.sortOnHeaderClick = checked; break;
+		case IDC_PREF_SCROLL_PER_LIST: view.scrollPerPlaylist = checked; break;
+		case IDC_PREF_BOLD_PLAYING: view.boldPlaying = checked; break;
+		}
+		Changed();
+	}
+
+	void OnNumberChanged(UINT, int id, CWindow) {
+		if (m_showing) return;
+		BOOL valid = FALSE;
+		const int value = static_cast<int>(GetDlgItemInt(id, &valid, FALSE));
+		if (!valid) return;
+		if (id == IDC_PREF_ROW_PADDING) m_values.view.rowPadding = ClampRowPadding(value);
+		else m_values.view.coverSize = ClampCoverSize(value);
+		m_callback->on_state_changed();
+	}
+
+	void OnRatingChanged(UINT, int, CWindow) {
+		const int index = CComboBox(GetDlgItem(IDC_PREF_RATING)).GetCurSel();
+		if (index >= 0) m_values.rating = static_cast<RatingStorage>(index);
+		m_callback->on_state_changed();
+	}
+
+	void OnLanguageChanged(UINT, int, CWindow) {
+		const int index = CComboBox(GetDlgItem(IDC_PREF_LANGUAGE)).GetCurSel();
+		if (index >= 0) m_values.language = static_cast<UiLanguage>(index);
+		m_callback->on_state_changed();
+	}
+
+	void OnChooseFont(UINT, int id, CWindow) {
+		LOGFONTW& font = id == IDC_PREF_TRACK_FONT_BUTTON ? m_values.view.trackFont : m_values.view.headerFont;
+		LOGFONTW chosen = FontAtDpi(font, ScreenDpi());
+		CHOOSEFONTW dialog = { sizeof(dialog) };
+		dialog.hwndOwner = m_hWnd;
+		dialog.lpLogFont = &chosen;
+		dialog.Flags = CF_INITTOLOGFONTSTRUCT | CF_SCREENFONTS | CF_NOVERTFONTS;
+		if (!ChooseFontW(&dialog)) return;
+		font = FontAt96Dpi(chosen, ScreenDpi());
+		Changed();
+	}
+
+	void OnChooseColor(UINT, int id, CWindow) {
+		COLORREF& color = id == IDC_PREF_HEADER_COLOR ? m_values.view.headerColor : m_values.view.labelColor;
+		static COLORREF customColors[16] = {};
+		CHOOSECOLORW dialog = { sizeof(dialog) };
+		dialog.hwndOwner = m_hWnd;
+		dialog.rgbResult = color;
+		dialog.lpCustColors = customColors;
+		dialog.Flags = CC_RGBINIT | CC_FULLOPEN;
+		if (!ChooseColorW(&dialog)) return;
+		color = dialog.rgbResult;
+		Changed();
+	}
+
+	void OnDrawItem(int id, LPDRAWITEMSTRUCT item) {
+		if (id != IDC_PREF_HEADER_SWATCH && id != IDC_PREF_LABEL_SWATCH) {
+			SetMsgHandled(FALSE);
+			return;
+		}
+		CDCHandle dc(item->hDC);
+		dc.FillSolidRect(&item->rcItem, id == IDC_PREF_HEADER_SWATCH ? m_values.view.headerColor : m_values.view.labelColor);
+		dc.FrameRect(&item->rcItem, static_cast<HBRUSH>(GetStockObject(GRAY_BRUSH)));
+	}
+
+	const preferences_page_callback::ptr m_callback;
+	PageValues m_values;
+	// True while the page or a spin button writes a number into an edit box, so that write is not read back as an edit.
+	// It starts true because the spin buttons write to their edit boxes while the dialog is being created.
+	bool m_showing = true;
+	fb2k::CDarkModeHooks m_dark;
+	DialogTexts m_texts;
+};
+
+PreferencesDialog* PreferencesDialog::s_open = nullptr;
+
+class PreferencesPage : public preferences_page_impl<PreferencesDialog> {
+public:
+	const char* get_name() override { return "GroupPlaylist"; }
+	GUID get_guid() override { return guid_preferences_page; }
+	// Component settings live under Tools, as in other foobar2000 components.
+	GUID get_parent_guid() override { return preferences_page::guid_tools; }
+};
+
+preferences_page_factory_t<PreferencesPage> g_preferences_page_factory;
+
+} // namespace
+
+void MenuTogglesChanged() {
+	if (PreferencesDialog::s_open) PreferencesDialog::s_open->TakeMenuToggles();
+}

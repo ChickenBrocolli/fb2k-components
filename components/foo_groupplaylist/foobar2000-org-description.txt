@@ -1,0 +1,19 @@
+Short description for the foobar2000.org component repository. Plain text: paste it into the description field.
+------------------------------------------------------------------------------
+
+GroupPlaylist is a playlist view for foobar2000 64-bit (Default UI). It groups the tracks of a playlist, for example by album, and shows the album art and an information column beside each group. Disc labels such as "Disc 1" can split a group further.
+
+A 64-bit alternative to SimPlaylist, written from scratch. Not affiliated with the author of SimPlaylist.
+
+Features:
+* Groups and labels made from title formatting patterns, with ready-made presets, or no grouping at all
+* 22 built-in columns plus your own columns
+* Star ratings you click, kept in the file tags or in Playback Statistics (needs foo_playcount)
+* Follows the Default UI colours, fonts and dark mode
+* Remembers the grouping and scroll position of each playlist
+* English and Korean interface
+
+Add it with View > Layout > Enable layout editing mode, then Replace UI Element > Playlist Views > GroupPlaylist. Right-click a column title for the panel menu. Settings are in Preferences > Tools > GroupPlaylist.
+
+Requires foobar2000 v2.0 or newer, 64-bit.
+License: MIT.
