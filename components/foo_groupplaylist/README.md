@@ -13,7 +13,9 @@ GroupPlaylist is a 64-bit alternative to SimPlaylist. It is a new program writte
 - Groups and labels made from title formatting patterns, with ready-made presets (Album, Album + Disc, Artist / Cover / Album and others), or no grouping at all
 - 22 built-in columns plus your own columns
 - Star ratings you click, kept in the file tags or in Playback Statistics
+- Smooth scrolling that glides like a flicked list, with presets you can fine-tune
 - Follows the Default UI colours, fonts and dark mode
+- Settings export and import, for a backup or another computer
 - English and Korean
 
 ## Screenshots
@@ -25,6 +27,10 @@ GroupPlaylist is a 64-bit alternative to SimPlaylist. It is a new program writte
 | Panel menu (right-click a column title) | Preferences > Tools > GroupPlaylist |
 |---|---|
 | ![Panel menu with the Groups submenu](screenshots/header-menu.png) | ![Settings page](screenshots/settings.png) |
+
+| Preferences > Tools > GroupPlaylist > Scrolling |
+|---|
+| ![Scrolling page: presets and the five numbers of the glide](screenshots/scrolling.png) |
 
 The albums in the screenshots are made up: `tools\make-screenshot-tracks.ps1` writes them.
 
@@ -69,8 +75,8 @@ Other things you can do in the panel:
 - Click an album cover to select the tracks under it. Double-click it to play them.
 - Right-click an album cover to reload its art or open its folder.
 - Double-click a group header to play the group.
-- Drag a group header or a disc label to move the whole group or disc.
-- Click a column title to sort the playlist by that column, and click again to reverse. Click the empty title above the covers to return to the preset's order. **Edit > Undo** (Ctrl+Z) undoes a sort.
+- Drag a group header or a disc label to move the whole group or disc. A group goes only between groups, a disc only between discs.
+- Click a column title to sort the playlist by that column, and click again to reverse. Click the empty title above the covers, or pick a preset under **Groups** right after such a sort, to return to the preset's order. **Edit > Undo** (Ctrl+Z) undoes a sort.
 - Hold **Ctrl** and turn the mouse wheel to make the album art larger or smaller.
 - On the playing track, click the **Duration** cell to switch between the time played and the time left.
 
