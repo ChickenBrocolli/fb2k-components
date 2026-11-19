@@ -13,7 +13,8 @@
 
 namespace {
 
-// The page edits a copy. Apply saves the copy and redraws every panel, as foobar2000 preferences pages do.
+// The page edits a copy, which the panels show at once (ShowPreferencesPreview). Apply saves the copy; closing
+// Preferences without Apply leaves the saved settings. Language and rating storage change only on Apply.
 // Smooth scrolling and header pinning belong to the Scrolling page; this page leaves them as saved.
 struct PageValues {
 	ViewSettings view;
@@ -26,9 +27,12 @@ struct PageValues {
 		return rating == other.rating && language == other.language &&
 			a.customTrackFont == b.customTrackFont && memcmp(&a.trackFont, &b.trackFont, sizeof(LOGFONTW)) == 0 &&
 			a.customHeaderFont == b.customHeaderFont && memcmp(&a.headerFont, &b.headerFont, sizeof(LOGFONTW)) == 0 &&
+			a.customHeaderColor == b.customHeaderColor && a.customLabelColor == b.customLabelColor &&
+			a.customStarColor == b.customStarColor && a.starColor == b.starColor &&
 			a.headerColor == b.headerColor && a.labelColor == b.labelColor &&
 			a.rowPadding == b.rowPadding && a.coverSize == b.coverSize &&
 			a.presetPerPlaylist == b.presetPerPlaylist && a.dimBrackets == b.dimBrackets &&
+			a.showTrackSummary == b.showTrackSummary && a.trackSummaryPlace == b.trackSummaryPlace &&
 			a.sortOnHeaderClick == b.sortOnHeaderClick && a.dragColumns == b.dragColumns && a.scrollPerPlaylist == b.scrollPerPlaylist &&
 			a.boldPlaying == b.boldPlaying;
 	}
@@ -36,6 +40,12 @@ struct PageValues {
 
 PageValues SavedValues() {
 	return { LoadViewSettings(), GetRatingStorage(), GetUiLanguage() };
+}
+
+// foobar2000's highlight colour (Default UI colours), which the group header and label text use without their own.
+COLORREF FoobarHighlightColor() {
+	const ui_config_manager::ptr colors = ui_config_manager::tryGet();
+	return colors.is_valid() ? colors->getSysColor(COLOR_HOTLIGHT) : GetSysColor(COLOR_HOTLIGHT);
 }
 
 // The title of the page's message boxes.
@@ -66,6 +76,16 @@ public:
 	// The page while it exists, so a change made in a panel shows on it. foobar2000 keeps a page that was shown
 	// until Preferences closes.
 	static PreferencesDialog* s_open;
+
+	// The page's part of the panels' preview while it is shown: its view settings, with the Scrolling page's part
+	// of view kept.
+	ViewSettings WithEdits(const ViewSettings& view) const {
+		if (!m_previewing) return view;
+		ViewSettings edited = m_values.view;
+		edited.smoothScroll = view.smoothScroll;
+		edited.pinHeaders = view.pinHeaders;
+		return edited;
+	}
 
 	// A panel saved a new cover size (Ctrl+wheel, dragging the cover column) or column dragging (the header menu).
 	// The page takes what changed since it last looked, so Apply does not put the old value back. A setting saved
@@ -115,16 +135,23 @@ public:
 	void reset() override {
 		m_values = { DefaultViewSettings(), RatingStorage::FileTags, UiLanguage::Automatic };
 		ShowValues();
+		ShowPreferencesPreview();
 		m_callback->on_state_changed();
 	}
 
 	BEGIN_MSG_MAP_EX(PreferencesDialog)
 		MSG_WM_INITDIALOG(OnInitDialog)
+		MSG_WM_DESTROY(OnDestroy)
 		MSG_WM_DRAWITEM(OnDrawItem)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_TRACK_FONT_CUSTOM, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_FONT_CUSTOM, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_COLOR_CUSTOM, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_LABEL_COLOR_CUSTOM, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_STAR_COLOR_CUSTOM, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_PRESET_PER_LIST, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_DIM_BRACKETS, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_TRACK_SUMMARY, OnCheckChanged)
+		COMMAND_HANDLER_EX(IDC_PREF_SUMMARY_PLACE, CBN_SELCHANGE, OnSummaryPlaceChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SORT_ON_CLICK, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_DRAG_COLUMNS, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SCROLL_PER_LIST, OnCheckChanged)
@@ -133,6 +160,7 @@ public:
 		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_FONT_BUTTON, OnChooseFont)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_COLOR, OnChooseColor)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_LABEL_COLOR, OnChooseColor)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_STAR_COLOR, OnChooseColor)
 		COMMAND_HANDLER_EX(IDC_PREF_ROW_PADDING, EN_CHANGE, OnNumberChanged)
 		COMMAND_HANDLER_EX(IDC_PREF_COVER_SIZE, EN_CHANGE, OnNumberChanged)
 		COMMAND_HANDLER_EX(IDC_PREF_RATING, CBN_SELCHANGE, OnRatingChanged)
@@ -150,7 +178,17 @@ private:
 		FillChoices();
 		ShowValues();
 		m_showing = false;
+		m_previewing = true;
 		return FALSE;
+	}
+
+	// Not applied: the panels show the saved settings again. Nothing is redrawn when the page shows no edit.
+	void OnDestroy() {
+		const PageValues saved = SavedValues();
+		const bool edited = !(PageValues{ WithEdits(saved.view), saved.rating, saved.language } == saved);
+		m_previewing = false;
+		if (edited) ShowPreferencesPreview();
+		SetMsgHandled(FALSE);
 	}
 
 	// The texts of the two drop-down lists, in the current language. ShowValues selects the saved items.
@@ -173,6 +211,12 @@ private:
 		language.AddString(L"한국어");
 		language.GetWindowRect(box);
 		language.SetDroppedWidth(box.Width() * 3 / 2);
+		// The order follows TrackSummaryPlace.
+		CComboBox summaryPlace(GetDlgItem(IDC_PREF_SUMMARY_PLACE));
+		summaryPlace.ResetContent();
+		summaryPlace.AddString(TrW("Group headers and label rows").c_str());
+		summaryPlace.AddString(TrW("Group headers only").c_str());
+		summaryPlace.AddString(TrW("Label rows only").c_str());
 	}
 
 	void ShowValues() {
@@ -181,8 +225,13 @@ private:
 		const ViewSettings& view = m_values.view;
 		CheckDlgButton(IDC_PREF_TRACK_FONT_CUSTOM, view.customTrackFont ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_HEADER_FONT_CUSTOM, view.customHeaderFont ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_HEADER_COLOR_CUSTOM, view.customHeaderColor ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_LABEL_COLOR_CUSTOM, view.customLabelColor ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_STAR_COLOR_CUSTOM, view.customStarColor ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_PRESET_PER_LIST, view.presetPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_DIM_BRACKETS, view.dimBrackets ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_TRACK_SUMMARY, view.showTrackSummary ? BST_CHECKED : BST_UNCHECKED);
+		CComboBox(GetDlgItem(IDC_PREF_SUMMARY_PLACE)).SetCurSel(static_cast<int>(view.trackSummaryPlace));
 		CheckDlgButton(IDC_PREF_SORT_ON_CLICK, view.sortOnHeaderClick ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_DRAG_COLUMNS, view.dragColumns ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_SCROLL_PER_LIST, view.scrollPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
@@ -204,12 +253,18 @@ private:
 		GetDlgItem(IDC_PREF_TRACK_FONT_NAME).EnableWindow(view.customTrackFont);
 		GetDlgItem(IDC_PREF_HEADER_FONT_BUTTON).EnableWindow(view.customHeaderFont);
 		GetDlgItem(IDC_PREF_HEADER_FONT_NAME).EnableWindow(view.customHeaderFont);
+		GetDlgItem(IDC_PREF_SUMMARY_PLACE).EnableWindow(view.showTrackSummary);
+		GetDlgItem(IDC_PREF_HEADER_COLOR).EnableWindow(view.customHeaderColor);
+		GetDlgItem(IDC_PREF_LABEL_COLOR).EnableWindow(view.customLabelColor);
+		GetDlgItem(IDC_PREF_STAR_COLOR).EnableWindow(view.customStarColor);
 		GetDlgItem(IDC_PREF_HEADER_SWATCH).Invalidate();
 		GetDlgItem(IDC_PREF_LABEL_SWATCH).Invalidate();
+		GetDlgItem(IDC_PREF_STAR_SWATCH).Invalidate();
 	}
 
 	void Changed() {
 		ShowFontsAndColors();
+		ShowPreferencesPreview();
 		m_callback->on_state_changed();
 	}
 
@@ -219,8 +274,12 @@ private:
 		switch (id) {
 		case IDC_PREF_TRACK_FONT_CUSTOM: view.customTrackFont = checked; break;
 		case IDC_PREF_HEADER_FONT_CUSTOM: view.customHeaderFont = checked; break;
+		case IDC_PREF_HEADER_COLOR_CUSTOM: view.customHeaderColor = checked; break;
+		case IDC_PREF_LABEL_COLOR_CUSTOM: view.customLabelColor = checked; break;
+		case IDC_PREF_STAR_COLOR_CUSTOM: view.customStarColor = checked; break;
 		case IDC_PREF_PRESET_PER_LIST: view.presetPerPlaylist = checked; break;
 		case IDC_PREF_DIM_BRACKETS: view.dimBrackets = checked; break;
+		case IDC_PREF_TRACK_SUMMARY: view.showTrackSummary = checked; break;
 		case IDC_PREF_SORT_ON_CLICK: view.sortOnHeaderClick = checked; break;
 		case IDC_PREF_DRAG_COLUMNS: view.dragColumns = checked; break;
 		case IDC_PREF_SCROLL_PER_LIST: view.scrollPerPlaylist = checked; break;
@@ -234,9 +293,19 @@ private:
 		BOOL valid = FALSE;
 		const int value = static_cast<int>(GetDlgItemInt(id, &valid, FALSE));
 		if (!valid) return;
-		if (id == IDC_PREF_ROW_PADDING) m_values.view.rowPadding = ClampRowPadding(value);
-		else m_values.view.coverSize = ClampCoverSize(value);
+		const int clamped = id == IDC_PREF_ROW_PADDING ? ClampRowPadding(value) : ClampCoverSize(value);
+		if (id == IDC_PREF_ROW_PADDING) m_values.view.rowPadding = clamped;
+		else m_values.view.coverSize = clamped;
+		// While a number is being typed ("1", "15" on the way to 150) it can lie outside the range. The panels wait
+		// for a number inside it rather than flash the smallest album art.
+		if (clamped == value) ShowPreferencesPreview();
 		m_callback->on_state_changed();
+	}
+
+	void OnSummaryPlaceChanged(UINT, int, CWindow) {
+		const int index = CComboBox(GetDlgItem(IDC_PREF_SUMMARY_PLACE)).GetCurSel();
+		if (index >= 0) m_values.view.trackSummaryPlace = TrackSummaryPlaceFrom(index);
+		Changed();
 	}
 
 	void OnRatingChanged(UINT, int, CWindow) {
@@ -264,7 +333,8 @@ private:
 	}
 
 	void OnChooseColor(UINT, int id, CWindow) {
-		COLORREF& color = id == IDC_PREF_HEADER_COLOR ? m_values.view.headerColor : m_values.view.labelColor;
+		ViewSettings& view = m_values.view;
+		COLORREF& color = id == IDC_PREF_HEADER_COLOR ? view.headerColor : id == IDC_PREF_LABEL_COLOR ? view.labelColor : view.starColor;
 		static COLORREF customColors[16] = {};
 		CHOOSECOLORW dialog = { sizeof(dialog) };
 		dialog.hwndOwner = m_hWnd;
@@ -307,6 +377,7 @@ private:
 		ReloadGroupsPage();
 		ReloadScrollingPage();
 		m_values = SavedValues();
+		ShowPreferencesPreview();
 		if (GetUiLanguage() != language) {
 			m_texts.Retranslate();
 			FillChoices();
@@ -317,12 +388,18 @@ private:
 	}
 
 	void OnDrawItem(int id, LPDRAWITEMSTRUCT item) {
-		if (id != IDC_PREF_HEADER_SWATCH && id != IDC_PREF_LABEL_SWATCH) {
+		if (id != IDC_PREF_HEADER_SWATCH && id != IDC_PREF_LABEL_SWATCH && id != IDC_PREF_STAR_SWATCH) {
 			SetMsgHandled(FALSE);
 			return;
 		}
 		CDCHandle dc(item->hDC);
-		dc.FillSolidRect(&item->rcItem, id == IDC_PREF_HEADER_SWATCH ? m_values.view.headerColor : m_values.view.labelColor);
+		// Without its own colour each follows foobar2000's highlight colour, so the swatch shows the colour in use.
+		const ViewSettings& view = m_values.view;
+		const bool header = id == IDC_PREF_HEADER_SWATCH;
+		const bool label = id == IDC_PREF_LABEL_SWATCH;
+		const bool own = header ? view.customHeaderColor : label ? view.customLabelColor : view.customStarColor;
+		const COLORREF color = !own ? FoobarHighlightColor() : header ? view.headerColor : label ? view.labelColor : view.starColor;
+		dc.FillSolidRect(&item->rcItem, color);
 		dc.FrameRect(&item->rcItem, static_cast<HBRUSH>(GetStockObject(GRAY_BRUSH)));
 	}
 
@@ -334,6 +411,8 @@ private:
 	// True while the page or a spin button writes a number into an edit box, so that write is not read back as an edit.
 	// It starts true because the spin buttons write to their edit boxes while the dialog is being created.
 	bool m_showing = true;
+	// True from the page's creation until it closes, the time its edits show in the panels.
+	bool m_previewing = false;
 	fb2k::CDarkModeHooks m_dark;
 	DialogTexts m_texts;
 };
@@ -354,5 +433,12 @@ PreferencesDialog* PreferencesDialog::s_open = nullptr;
 
 void PanelSettingsChanged() {
 	if (PreferencesDialog::s_open) PreferencesDialog::s_open->TakePanelChanges();
+	TakeScrollingPageChanges();
+}
+
+void ShowPreferencesPreview() {
+	ViewSettings shown = LoadViewSettings();
+	if (PreferencesDialog::s_open) shown = PreferencesDialog::s_open->WithEdits(shown);
+	PlaylistView::ShowViewSettings(WithScrollingPageEdits(shown));
 }
 

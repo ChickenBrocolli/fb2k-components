@@ -76,6 +76,7 @@ Other things you can do in the panel:
 
 - Click an album cover to select the tracks under it. Double-click it to play them.
 - Right-click an album cover to reload its art or open its folder.
+- Right-click the tracks for **Play**, **Remove**, **Crop**, **Sort**, **Cut**, **Copy** and **Paste**, followed by the usual foobar2000 commands. **Sort** changes the order of the selected tracks only: by a title formatting pattern you type, at random, reversed, or by album, artist, file path, title or track number. **Edit > Undo** (Ctrl+Z) undoes these changes.
 - Double-click a group header to play the group.
 - Drag a group header or a disc label to move the whole group or disc. A group goes only between groups, a disc only between discs.
 - Click a column title to sort the playlist by that column, and click again to reverse. Click the empty title above the covers, or pick a preset under **Groups** right after such a sort, to return to the preset's order. **Edit > Undo** (Ctrl+Z) undoes a sort.
@@ -85,18 +86,18 @@ Other things you can do in the panel:
 
 ## Settings
 
-Open **File > Preferences > Tools > GroupPlaylist**.
+Open **File > Preferences > Tools > GroupPlaylist**. A change on this page shows in the panels at once, so you can try it out. **Apply** or **OK** saves it, and **Cancel** puts the saved settings back. **Language** and **Rating** change only on **Apply**.
 
 - **Fonts**: your own fonts for the tracks and for the group headers. Without them the panel uses the Default UI playlist font.
-- **Colours and sizes**: colour of the group header text and of the labels, extra row height, album art size.
-- **Rating**: where a click on the stars saves the rating: **File tags**, **Playback Statistics**, or **Both**. The last two need the separate Playback Statistics component (`foo_playcount`). Without it they are greyed out and marked "(needs Playback Statistics)".
+- **Colours and sizes**: the group header and label text follow foobar2000's highlight colour (Default UI colours) unless you tick **Own header colour** or **Own label colour** and pick one; extra row height, album art size.
+- **Rating**: where a click on the stars saves the rating: **File tags**, **Playback Statistics**, or **Both**. The last two need the separate Playback Statistics component (`foo_playcount`). Without it they are greyed out and marked "(needs Playback Statistics)". Filled stars take foobar2000's highlight colour too, or a colour of your own with **Own star colour**.
 - **Language**: **Automatic** follows the Windows display language (Korean on Korean Windows, English otherwise). **English** and **한국어** choose one. After **Apply** the panel and the page change at once. Reopen Preferences to see the page names in the new language.
-- **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, drag column titles to reorder the columns, dim text in brackets such as `(Remastered)`, and show the playing track in bold.
+- **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, drag column titles to reorder the columns, dim text in brackets such as `(Remastered)`, show the playing track in bold, and show the track count and length on group headers, on label rows or on both (it can also be turned off).
 - **Settings file**: **Export settings...** saves every GroupPlaylist setting to a text file, and **Import settings...** loads one, for a backup or another computer. Per-playlist presets and scroll positions, ratings, and each panel's column layout are not in the file.
 
 Three pages sit below it:
 
-- **Columns**: the built-in columns (locked, but you can choose which appear in the menu or duplicate one to change the copy) and your own columns. A column's text is a [title formatting](https://wiki.hydrogenaud.io/index.php?title=Foobar2000:Title_Formatting_Reference) pattern. **Insert field** adds common fields, and the preview shows the result for the focused track.
+- **Columns**: the built-in columns and your own columns. A built-in column cannot be removed, but you can change its name, pattern and alignment, choose whether it appears in the menu, and put it back with **Restore default**. A column's text is a [title formatting](https://wiki.hydrogenaud.io/index.php?title=Foobar2000:Title_Formatting_Reference) pattern. **Insert field** adds common fields, and the preview shows the result for the focused track.
 - **Groups**: the presets. Each preset has a pattern for the group header, for the cover (tracks with the same value share one cover), for the labels inside a group (one per line), and for its sort order.
 - **Scrolling**: pinned group headers and smooth scrolling (the same switches as in the panel menu), and how the wheel glides: **Default**, **Light** (stops at once, hardly speeds up), **Heavy** (glides long, speeds up a lot when you spin the wheel), or your own sets, made from five numbers. A change shows at once while you scroll; **Apply** keeps it. Once you change a number, the preset list shows **Custom (unsaved)** and offers an unused name such as "Custom preset 1"; **Save as new** keeps the numbers as a preset of their own, and **Overwrite** saves them into your preset they started from.
 

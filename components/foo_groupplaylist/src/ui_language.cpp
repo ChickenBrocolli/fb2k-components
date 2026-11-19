@@ -39,11 +39,12 @@ std::wstring TrW(const char* english) {
 	return std::wstring(pfc::stringcvt::string_wide_from_utf8(Tr(english)).get_ptr());
 }
 
-std::string ColumnTitle(const std::string& name) {
-	for (const ColumnDef& def : BuiltInColumnDefs()) {
-		if (def.name == name) return Tr(name.c_str());
+std::string ColumnTitle(const ColumnDef& def) {
+	if (!def.title.empty()) return def.title;
+	for (const ColumnDef& builtIn : BuiltInColumnDefs()) {
+		if (builtIn.name == def.name) return Tr(def.name.c_str());
 	}
-	return name;
+	return def.name;
 }
 
 std::string TrackCount(size_t tracks) {

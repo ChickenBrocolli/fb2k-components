@@ -111,6 +111,10 @@ std::string ExportSettingsText() {
 	out.Add("headerFont", FontText(view.headerFont));
 	out.Add("headerColor", FormatSettingColor(view.headerColor));
 	out.Add("labelColor", FormatSettingColor(view.labelColor));
+	out.AddBool("customHeaderColor", view.customHeaderColor);
+	out.AddBool("customLabelColor", view.customLabelColor);
+	out.AddBool("customStarColor", view.customStarColor);
+	out.Add("starColor", FormatSettingColor(view.starColor));
 	out.AddInt("rowPadding", view.rowPadding);
 	out.AddInt("coverSize", view.coverSize);
 	out.AddInt("ratingStorage", static_cast<int>(GetRatingStorage()));
@@ -120,6 +124,8 @@ std::string ExportSettingsText() {
 	out.AddBool("sortOnHeaderClick", view.sortOnHeaderClick);
 	out.AddBool("dragColumns", view.dragColumns);
 	out.AddBool("dimBrackets", view.dimBrackets);
+	out.AddBool("showTrackSummary", view.showTrackSummary);
+	out.AddInt("trackSummaryPlace", static_cast<int>(view.trackSummaryPlace));
 	out.AddBool("boldPlaying", view.boldPlaying);
 	out.AddBool("durationCountsDown", GetDurationCountsDown());
 
@@ -138,6 +144,8 @@ std::string ExportSettingsText() {
 	for (const std::string& name : LoadHiddenBuiltInColumns()) hidden += (hidden.empty() ? "" : "\t") + name;
 	out.Add("hiddenBuiltInColumns", hidden);
 	out.AddList("customColumns", "column", Lines(SerializeColumnDefs(LoadCustomColumnDefs())));
+	out.Comment("Changed built-in columns: name, shown name (empty keeps the built-in one), pattern, alignment");
+	out.AddList("builtInColumnEdits", "builtInColumnEdit", Lines(SerializeBuiltInEdits(LoadBuiltInColumnEdits())));
 
 	out.Comment("Group presets: name, sort, header, cover, flags, labels");
 	out.AddList("groupPresets", "groupPreset", Lines(SerializePresets(LoadGroupPresets())));
@@ -160,6 +168,13 @@ bool ImportSettingsText(const std::string& text) {
 	in.Font("headerFont", view.headerFont);
 	in.Color("headerColor", view.headerColor);
 	in.Color("labelColor", view.labelColor);
+	// A file from before 0.9.2 has the colours but not whether they are the user's own; the upgrade rule decides.
+	if (!in.Text("customHeaderColor") && in.Text("headerColor")) view.customHeaderColor = UsesOwnTextColor(-1, view.headerColor);
+	else in.Bool("customHeaderColor", view.customHeaderColor);
+	if (!in.Text("customLabelColor") && in.Text("labelColor")) view.customLabelColor = UsesOwnTextColor(-1, view.labelColor);
+	else in.Bool("customLabelColor", view.customLabelColor);
+	in.Bool("customStarColor", view.customStarColor);
+	in.Color("starColor", view.starColor);
 	in.Int("rowPadding", view.rowPadding, kMinRowPadding, kMaxRowPadding);
 	in.Int("coverSize", view.coverSize, kMinCoverSize, kMaxCoverSize);
 	in.Bool("presetPerPlaylist", view.presetPerPlaylist);
@@ -167,6 +182,10 @@ bool ImportSettingsText(const std::string& text) {
 	in.Bool("sortOnHeaderClick", view.sortOnHeaderClick);
 	in.Bool("dragColumns", view.dragColumns);
 	in.Bool("dimBrackets", view.dimBrackets);
+	in.Bool("showTrackSummary", view.showTrackSummary);
+	int summaryPlace = static_cast<int>(view.trackSummaryPlace);
+	in.Int("trackSummaryPlace", summaryPlace, 0, kTrackSummaryPlaceCount - 1);
+	view.trackSummaryPlace = TrackSummaryPlaceFrom(summaryPlace);
 	in.Bool("boldPlaying", view.boldPlaying);
 	in.Bool("pinHeaders", view.pinHeaders);
 	in.Bool("smoothScroll", view.smoothScroll);
@@ -188,6 +207,12 @@ bool ImportSettingsText(const std::string& text) {
 	// Custom columns: a name that a built-in column or an earlier custom column has is left out.
 	const auto hidden = in.Text("hiddenBuiltInColumns");
 	const auto columns = in.List("customColumns", "column");
+	const auto builtInEdits = in.List("builtInColumnEdits", "builtInColumnEdit");
+	// Kept as the Columns page would save them: lines for unknown columns, repeats and unchanged columns drop out.
+	if (builtInEdits) {
+		const std::vector<ColumnDef> edited = ApplyBuiltInEdits(BuiltInColumnDefs(), ParseBuiltInEdits(JoinLines(*builtInEdits)));
+		SaveBuiltInColumnEdits(BuiltInEditsFrom(BuiltInColumnDefs(), edited));
+	}
 	if (hidden) {
 		std::vector<std::string> names;
 		for (const std::vector<std::string>& fields : SplitFieldLines(*hidden)) {
@@ -197,7 +222,7 @@ bool ImportSettingsText(const std::string& text) {
 		}
 		SaveHiddenBuiltInColumns(names);
 	}
-	if (hidden || columns) {
+	if (hidden || columns || builtInEdits) {
 		std::vector<ColumnDef> custom = columns ? std::vector<ColumnDef>() : LoadCustomColumnDefs();
 		if (columns) {
 			std::vector<std::string> taken;

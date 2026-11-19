@@ -125,6 +125,11 @@ protected:
 	void RenderItem(t_size item, const CRect& itemRect, const CRect& updateRect, CDCHandle dc) override;
 	void RenderTrackRow(t_size item, const CRect& rowRect, const CRect& updateRect, CDCHandle dc);
 	COLORREF SelectionFill(bool focused) const;
+	// The user's own colour, or foobar2000's highlight colour so the text follows the colour scheme.
+	COLORREF HeaderTextColor() const;
+	COLORREF LabelTextColor() const;
+	// The filled rating stars: their own colour, or foobar2000's highlight colour like the header and label text.
+	COLORREF StarFillColor() const;
 	void RenderSubItemText(t_size item, t_size subItem, const CRect& subItemRect, const CRect& updateRect, CDCHandle dc, bool allowColors) override;
 	void RenderGroupOverlayColumn(size_t baseItem, size_t subItem, const CRect& albumColumnRect, const CRect& updateRect, CDCHandle dc) override;
 	void RenderOverlay2(const CRect& updateRect, CDCHandle dc) override;
@@ -152,6 +157,9 @@ protected:
 	uint32_t QueryDragDropTypes() const override { return dragDrop_reorder | dragDrop_external; }
 	dragDropAccept_t DragDropAccept2(IDataObject* data) override;
 	void OnDrop(IDataObject* data, CPoint screenPoint) override;
+	// Ctrl+C / Ctrl+V and the Copy and Paste items of the track menu.
+	void CopySelection();
+	void PasteClipboard();
 
 private:
 	// What a list column shows. The cover and info columns have no script.
@@ -179,6 +187,7 @@ private:
 	LRESULT OnPinnedHeaderButton(UINT message, WPARAM, LPARAM position, BOOL& handled);
 	bool IsRatingColumn(size_t subItem) const;
 	int StarSlotWidth() const;
+	void UpdateStarFont();
 	void RenderDimmedBrackets(const char* text, const CRect& textRect, CDCHandle dc);
 	void SortPlaylist(const char* pattern, bool descending);
 	GUID ActivePlaylistGuid() const;
@@ -195,8 +204,6 @@ private:
 	bool RunEditKey(WPARAM key);
 	bool RunPageKey(WPARAM key);
 	void MoveFocusWithModifiers(t_size index);
-	void CopySelection();
-	void PasteClipboard();
 	void RebuildGroups();
 	void OnPlaylistContentChanged();
 	void OnRowsMoved();
@@ -292,6 +299,10 @@ private:
 	CFont m_trackFont;
 	CFont m_headerFont;
 	CFont m_playingFont;
+	// The rating stars, from a Windows icon font when one is installed (StarFont).
+	CFont m_starFont;
+	int m_starFontHeight = 0;
+	bool m_starFontIsIcons = false;
 	// The unit of the drag that is running, and for a section drag the label level it started on.
 	DragUnit m_dragUnit = DragUnit::Tracks;
 	size_t m_dragLevel = 0;

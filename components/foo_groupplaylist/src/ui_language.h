@@ -4,6 +4,8 @@
 #include <utility>
 #include <vector>
 
+#include "column_def.h"
+
 // The language of the component's own texts: English or Korean.
 // Automatic follows the Windows display language. The main preferences page sets it.
 enum class UiLanguage { Automatic = 0, English = 1, Korean = 2 };
@@ -17,7 +19,7 @@ const char* Tr(const char* english);
 std::wstring TrW(const char* english);
 
 // A built-in column's title in the current language. Custom column names are the user's and stay as they are.
-std::string ColumnTitle(const std::string& name);
+std::string ColumnTitle(const ColumnDef& def);
 
 // "12 tracks" in the current language.
 std::string TrackCount(size_t tracks);

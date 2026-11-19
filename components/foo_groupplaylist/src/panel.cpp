@@ -7,6 +7,7 @@
 
 #include "playlist_view.h"
 #include "preferences_pages.h"
+#include "track_menu.h"
 #include "ui_language.h"
 
 namespace {
@@ -129,13 +130,30 @@ private:
 			CPoint clientPoint = screenPoint;
 			ScreenToClient(&clientPoint);
 			if (const std::optional<size_t> block = CoverBlockAt(clientPoint)) RunCoverMenu(screenPoint, *block);
-			else contextmenu_manager::win32_run_menu_context_playlist(m_hWnd, &screenPoint);
+			else RunTrackMenuAt(screenPoint);
 		} else {
 			SetMsgHandled(FALSE);
 		}
 	}
 
-	// The menu of a cover. A right click elsewhere in the list shows the usual track menu.
+	// A right click on a group header focuses the group, not a track, so Play starts the group as a double click does.
+	t_size ItemToPlay() const {
+		const size_t group = GetGroupFocus2();
+		return group != SIZE_MAX ? group : GetFocusItem();
+	}
+
+	void RunTrackMenuAt(CPoint screenPoint) {
+		const t_size play = ItemToPlay();
+		switch (RunTrackMenu(m_hWnd, screenPoint, play < GetItemCount())) {
+		case TrackMenuCommand::Play: if (play < GetItemCount()) ExecuteDefaultAction(play); break;
+		case TrackMenuCommand::Cut: CopySelection(); RequestRemoveSelection(); break;
+		case TrackMenuCommand::Copy: CopySelection(); break;
+		case TrackMenuCommand::Paste: PasteClipboard(); break;
+		case TrackMenuCommand::None: break;
+		}
+	}
+
+	// The menu of a cover. A right click elsewhere in the list shows the track menu.
 	void RunCoverMenu(CPoint screenPoint, size_t block) {
 		enum : UINT { kReloadCommand = 1, kOpenFolderCommand };
 		CMenu menu;
@@ -178,7 +196,7 @@ private:
 			lineWaiting = false;
 			anyListed = true;
 			const UINT flags = MF_STRING | (shown ? MF_CHECKED : 0);
-			columns.AppendMenu(flags, kFirstColumnCommand + static_cast<UINT>(index), wide(ColumnTitle(defs[index].name)));
+			columns.AppendMenu(flags, kFirstColumnCommand + static_cast<UINT>(index), wide(ColumnTitle(defs[index])));
 		}
 		if (anyListed) columns.AppendMenu(MF_SEPARATOR);
 		columns.AppendMenu(MF_STRING, kCustomColumnsCommand, TrW("Edit...").c_str());
@@ -255,7 +273,6 @@ private:
 				ViewSettings changed = settings;
 				changed.smoothScroll = true;
 				ApplyViewSettings(changed);
-				MenuTogglesChanged();
 			}
 		} else if (command == kSmoothScrollOffCommand || command == kPinHeadersCommand || command == kDragColumnsCommand) {
 			ViewSettings changed = settings;
@@ -263,7 +280,6 @@ private:
 			else if (command == kPinHeadersCommand) changed.pinHeaders = !changed.pinHeaders;
 			else changed.dragColumns = !changed.dragColumns;
 			ApplyViewSettings(changed);
-			MenuTogglesChanged();
 		} else if (command >= kFirstScrollPresetCommand) {
 			PickScrollPreset(scrollPresets[command - kFirstScrollPresetCommand], settings);
 		} else if (command >= kFirstColumnCommand) {
@@ -283,8 +299,9 @@ private:
 			ViewSettings changed = settings;
 			changed.smoothScroll = true;
 			ApplyViewSettings(changed);
+		} else {
+			PanelSettingsChanged();
 		}
-		MenuTogglesChanged();
 	}
 
 	static constexpr t_uint32 kConfigVersion = 5;

@@ -14,6 +14,11 @@
 
 enum class ColumnAlignment { Left = 0, Center = 1, Right = 2 };
 
+// An alignment stored as a number. An unknown number reads as Left.
+inline ColumnAlignment ColumnAlignmentFrom(int number) {
+	return number == 1 ? ColumnAlignment::Center : number == 2 ? ColumnAlignment::Right : ColumnAlignment::Left;
+}
+
 // Text shows what the pattern produces. Rating shows the track's rating as stars and changes it on a click
 // (rating_cell.h). Its pattern is unused, because a setting decides where the rating is kept (rating_store.h).
 // Duration shows the length, and on the playing track the time played or left (see PlaylistView).
@@ -28,6 +33,9 @@ struct ColumnDef {
 	ColumnKind kind = ColumnKind::Text;
 	// Custom columns only. A column left out of the Columns menu still shows in panels that have it.
 	bool showInMenu = true;
+	// Built-in columns only: the name the user gave it. Empty shows the built-in name in the current language.
+	// The column is still found by name, so panels keep its place and width.
+	std::string title;
 };
 
 // Which columns a panel shows, in display order, with their widths.
@@ -118,6 +126,62 @@ inline std::vector<ColumnDef> BuiltInColumnDefsForMenu(const std::vector<std::st
 	return defs;
 }
 
+// What the user changed in built-in columns: the shown name, the pattern and the alignment.
+// Only columns that differ from their built-in definition are kept, one per line (tab_lines.h):
+// name, title, pattern, alignment number.
+inline std::string SerializeBuiltInEdits(const std::vector<ColumnDef>& edits) {
+	std::string out;
+	for (const ColumnDef& def : edits) {
+		out += JoinFieldLine({ def.name, def.title, def.pattern, std::to_string(static_cast<int>(def.alignment)) });
+	}
+	return out;
+}
+
+// A line with fewer than four fields or an empty name is skipped.
+inline std::vector<ColumnDef> ParseBuiltInEdits(const std::string& text) {
+	std::vector<ColumnDef> edits;
+	for (const std::vector<std::string>& fields : SplitFieldLines(text)) {
+		if (fields.size() < 4 || fields[0].empty()) continue;
+		ColumnDef def = { fields[0], fields[2], ColumnAlignmentFrom(std::atoi(fields[3].c_str())), 0 };
+		def.title = fields[1];
+		edits.push_back(def);
+	}
+	return edits;
+}
+
+// The built-in columns with the user's changes. A change for a name no built-in column has is left out.
+// Only text columns take a pattern: the Duration column draws the time played or left, and the Rating column's
+// stars come from code. The Rating column also keeps its alignment, because the stars are drawn from the left.
+inline std::vector<ColumnDef> ApplyBuiltInEdits(std::vector<ColumnDef> defs, const std::vector<ColumnDef>& edits) {
+	for (ColumnDef& def : defs) {
+		for (const ColumnDef& edit : edits) {
+			if (edit.name != def.name) continue;
+			def.title = edit.title;
+			if (def.kind == ColumnKind::Text) def.pattern = edit.pattern;
+			if (def.kind != ColumnKind::Rating) def.alignment = edit.alignment;
+		}
+	}
+	return defs;
+}
+
+inline bool IsEditedBuiltIn(const ColumnDef& def, const ColumnDef& original) {
+	return !def.title.empty() || def.pattern != original.pattern || def.alignment != original.alignment;
+}
+
+// The changes to keep: the built-in columns in defs that differ from the original of the same name.
+inline std::vector<ColumnDef> BuiltInEditsFrom(const std::vector<ColumnDef>& originals, const std::vector<ColumnDef>& defs) {
+	std::vector<ColumnDef> edits;
+	for (const ColumnDef& def : defs) {
+		for (const ColumnDef& original : originals) {
+			if (original.name != def.name || !IsEditedBuiltIn(def, original)) continue;
+			ColumnDef edit = { def.name, def.pattern, def.alignment, 0 };
+			edit.title = def.title;
+			edits.push_back(edit);
+		}
+	}
+	return edits;
+}
+
 // A new installation starts with no custom columns. The Columns preferences page adds them.
 inline std::vector<ColumnDef> DefaultCustomColumnDefs() {
 	return {};
@@ -146,11 +210,8 @@ inline std::vector<ColumnDef> ParseColumnDefs(const std::string& text) {
 	for (const std::vector<std::string>& fields : SplitFieldLines(text)) {
 		if (fields.size() < 4 || fields[0].empty()) continue;
 
-		const int alignment = std::atoi(fields[2].c_str());
 		const float width = static_cast<float>(std::atof(fields[3].c_str()));
-		ColumnDef def = { fields[0], fields[1],
-			alignment == 1 ? ColumnAlignment::Center : alignment == 2 ? ColumnAlignment::Right : ColumnAlignment::Left,
-			width > 0 ? width : 100.f };
+		ColumnDef def = { fields[0], fields[1], ColumnAlignmentFrom(std::atoi(fields[2].c_str())), width > 0 ? width : 100.f };
 		def.showInMenu = fields.size() < 5 || fields[4] != "0";
 		defs.push_back(def);
 	}

@@ -12,6 +12,7 @@ void RunSettingsTests();
 void RunHeaderSortTests();
 void RunColumnFitTests();
 void RunColumnPlacesTests();
+void RunSelectionOrderTests();
 
 int main() {
 	RunGroupModelTests();
@@ -26,6 +27,7 @@ int main() {
 	RunHeaderSortTests();
 	RunColumnFitTests();
 	RunColumnPlacesTests();
+	RunSelectionOrderTests();
 
 	if (FailureCount() == 0) {
 		std::printf("unit tests: all checks passed\n");

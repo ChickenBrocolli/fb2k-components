@@ -14,7 +14,8 @@
 
 // Preferences > Tools > GroupPlaylist > Columns.
 // The list holds the built-in columns first, in menu order, then the custom columns.
-// Built-in columns are locked: they can only be left out of the menu, or duplicated into an editable custom column.
+// Built-in columns keep their place and cannot be removed, but their shown name, pattern and alignment can be changed.
+// Restore default puts a built-in column back as it came.
 // The page edits a copy. Apply saves it and updates every panel.
 
 namespace {
@@ -51,7 +52,7 @@ public:
 
 	explicit ColumnsDialog(preferences_page_callback::ptr callback)
 		: m_callback(callback), m_reservedNames(BuiltInColumnNames()), m_builtInCount(m_reservedNames.size()) {
-		SetRows(BuiltInColumnDefsForMenu(LoadHiddenBuiltInColumns()), LoadCustomColumnDefs());
+		SetRows(SavedBuiltInColumnDefs(), LoadCustomColumnDefs());
 		s_open = this;
 	}
 	~ColumnsDialog() { if (s_open == this) s_open = nullptr; }
@@ -61,7 +62,7 @@ public:
 
 	// Settings were imported: the page drops its edits and shows the saved columns.
 	void ReloadSaved() {
-		SetRows(BuiltInColumnDefsForMenu(LoadHiddenBuiltInColumns()), LoadCustomColumnDefs());
+		SetRows(SavedBuiltInColumnDefs(), LoadCustomColumnDefs());
 		if (m_hWnd) FillList(FirstCustomRowOr(0));
 		m_callback->on_state_changed();
 	}
@@ -69,7 +70,8 @@ public:
 	t_uint32 get_state() override {
 		t_uint32 state = preferences_state::resettable | preferences_state::dark_mode_supported;
 		const bool changed = SerializeColumnDefs(CustomColumns()) != SerializeColumnDefs(LoadCustomColumnDefs()) ||
-			HiddenBuiltIns() != SavedHiddenNames();
+			HiddenBuiltIns() != SavedHiddenNames() ||
+			SerializeBuiltInEdits(BuiltInEdits()) != SerializeBuiltInEdits(BuiltInEditsFrom(BuiltInColumnDefs(), SavedBuiltInColumnDefs()));
 		if (changed) state |= preferences_state::changed;
 		return state;
 	}
@@ -77,6 +79,7 @@ public:
 	void apply() override {
 		if (!CheckNames()) return;
 		SaveHiddenBuiltInColumns(HiddenBuiltIns());
+		SaveBuiltInColumnEdits(BuiltInEdits());
 		PlaylistView::ApplyCustomColumns(CustomColumns(), Renames());
 		for (Row& row : m_rows) row.originalName = row.def.name;
 		m_callback->on_state_changed();
@@ -97,6 +100,7 @@ public:
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_NEW, OnNew)
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_DUPLICATE, OnDuplicate)
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_DELETE, OnDelete)
+		COMMAND_ID_HANDLER_EX(IDC_COLUMN_RESTORE, OnRestore)
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_UP, OnMove)
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_DOWN, OnMove)
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_INSERT, OnInsertField)
@@ -130,6 +134,25 @@ private:
 		return defs;
 	}
 
+	std::vector<ColumnDef> BuiltInEdits() const {
+		std::vector<ColumnDef> defs;
+		for (size_t index = 0; index < m_builtInCount && index < m_rows.size(); ++index) defs.push_back(m_rows[index].def);
+		return BuiltInEditsFrom(BuiltInColumnDefs(), defs);
+	}
+
+	// The built-in column as it came. The rows of the built-in columns are in the same order as BuiltInColumnDefs.
+	ColumnDef OriginalBuiltIn(int index) const {
+		return BuiltInColumnDefs()[static_cast<size_t>(index)];
+	}
+
+	bool IsEditedRow(int index) const {
+		return IsBuiltIn(index) && IsEditedBuiltIn(m_rows[index].def, OriginalBuiltIn(index));
+	}
+
+	std::string KindText(int index) const {
+		return Tr(!IsBuiltIn(index) ? "Custom" : IsEditedRow(index) ? "Built-in (edited)" : "Built-in");
+	}
+
 	std::vector<std::string> HiddenBuiltIns() const {
 		std::vector<ColumnDef> defs;
 		for (size_t index = 0; index < m_builtInCount && index < m_rows.size(); ++index) defs.push_back(m_rows[index].def);
@@ -149,7 +172,7 @@ private:
 	BOOL OnInitDialog(CWindow, LPARAM) {
 		m_dark.AddDialogWithControls(*this);
 		m_texts.Translate(*this);
-		m_list.Attach(GetDlgItem(IDC_COLUMN_LIST), { { TrW("Name").c_str(), 30 }, { TrW("Pattern").c_str(), 50 }, { TrW("Kind").c_str(), 20 } });
+		m_list.Attach(GetDlgItem(IDC_COLUMN_LIST), { { TrW("Name").c_str(), 28 }, { TrW("Pattern").c_str(), 46 }, { TrW("Kind").c_str(), 26 } });
 		CComboBox alignment(GetDlgItem(IDC_COLUMN_ALIGN));
 		for (const char* label : kAlignmentLabels) alignment.AddString(TrW(label).c_str());
 		// The custom columns are what people come here to change, so the page opens on the first of them.
@@ -162,7 +185,7 @@ private:
 		std::vector<bool> checks;
 		for (size_t index = 0; index < m_rows.size(); ++index) {
 			const ColumnDef& def = m_rows[index].def;
-			texts.push_back({ ColumnTitle(def.name), PatternText(def), Tr(index < m_builtInCount ? "Built-in" : "Custom") }); // ui-text
+			texts.push_back({ ColumnTitle(def), PatternText(def), KindText(static_cast<int>(index)) });
 			checks.push_back(def.showInMenu);
 		}
 		m_list.Fill(texts, checks, select);
@@ -177,22 +200,26 @@ private:
 	void LoadFields() {
 		const int index = SelectedIndex();
 		const bool hasRow = index >= 0;
-		const bool editable = hasRow && !IsBuiltIn(index);
+		const bool custom = hasRow && !IsBuiltIn(index);
+		// Only text columns take a pattern: Duration draws the time played or left, and Rating's stars come from code.
+		// The stars are drawn from the left, so Rating keeps its alignment too.
+		const bool patternEditable = hasRow && m_rows[index].def.kind == ColumnKind::Text;
+		const bool alignmentEditable = hasRow && m_rows[index].def.kind != ColumnKind::Rating;
 		m_loadingFields = true;
-		uSetDlgItemText(m_hWnd, IDC_COLUMN_NAME, hasRow ? ColumnTitle(m_rows[index].def.name).c_str() : "");
+		uSetDlgItemText(m_hWnd, IDC_COLUMN_NAME, hasRow ? ColumnTitle(m_rows[index].def).c_str() : "");
 		uSetDlgItemText(m_hWnd, IDC_COLUMN_PATTERN, hasRow ? PatternText(m_rows[index].def).c_str() : "");
 		CComboBox(GetDlgItem(IDC_COLUMN_ALIGN)).SetCurSel(hasRow ? static_cast<int>(m_rows[index].def.alignment) : -1);
 		m_loadingFields = false;
-		// A built-in column's fields stay readable but cannot be changed.
-		for (const int id : { IDC_COLUMN_NAME, IDC_COLUMN_PATTERN }) {
-			GetDlgItem(id).EnableWindow(hasRow);
-			CEdit(GetDlgItem(id)).SetReadOnly(!editable);
-		}
-		for (const int id : { IDC_COLUMN_INSERT, IDC_COLUMN_ALIGN, IDC_COLUMN_DELETE }) GetDlgItem(id).EnableWindow(editable);
+		for (const int id : { IDC_COLUMN_NAME, IDC_COLUMN_PATTERN }) GetDlgItem(id).EnableWindow(hasRow);
+		CEdit(GetDlgItem(IDC_COLUMN_PATTERN)).SetReadOnly(!patternEditable);
+		GetDlgItem(IDC_COLUMN_INSERT).EnableWindow(patternEditable);
+		GetDlgItem(IDC_COLUMN_ALIGN).EnableWindow(alignmentEditable);
+		GetDlgItem(IDC_COLUMN_DELETE).EnableWindow(custom);
+		GetDlgItem(IDC_COLUMN_RESTORE).EnableWindow(IsEditedRow(index));
 		// A copy of the Rating column would be an empty text column, because its stars come from code, not a pattern.
 		GetDlgItem(IDC_COLUMN_DUPLICATE).EnableWindow(hasRow && m_rows[index].def.kind != ColumnKind::Rating);
-		GetDlgItem(IDC_COLUMN_UP).EnableWindow(editable && index > static_cast<int>(m_builtInCount));
-		GetDlgItem(IDC_COLUMN_DOWN).EnableWindow(editable && index + 1 < static_cast<int>(m_rows.size()));
+		GetDlgItem(IDC_COLUMN_UP).EnableWindow(custom && index > static_cast<int>(m_builtInCount));
+		GetDlgItem(IDC_COLUMN_DOWN).EnableWindow(custom && index + 1 < static_cast<int>(m_rows.size()));
 		UpdatePreview();
 	}
 
@@ -203,7 +230,6 @@ private:
 			const ColumnDef& def = m_rows[index].def;
 			if (def.kind == ColumnKind::Rating) text = Tr("The main page sets where ratings are kept.");
 			else text = DescribePatternPreview(def.pattern.c_str());
-			if (IsBuiltIn(index)) text = Tr("Built-in, locked. Duplicate it to change a copy.\n") + text;
 		}
 		uSetDlgItemText(m_hWnd, IDC_COLUMN_PREVIEW, text.c_str());
 	}
@@ -229,22 +255,33 @@ private:
 
 	void OnFieldChanged(UINT, int id, CWindow) {
 		const int index = SelectedIndex();
-		if (m_loadingFields || index < 0 || IsBuiltIn(index)) return;
+		if (m_loadingFields || index < 0) return;
 		ColumnDef& def = m_rows[index].def;
 		pfc::string8 text;
 		if (id == IDC_COLUMN_NAME) {
 			uGetDlgItemText(m_hWnd, IDC_COLUMN_NAME, text);
-			def.name = text.c_str();
-			m_list.SetText(index, 0, def.name);
+			// A built-in column keeps its name, which panels find it by, and shows the given one.
+			// An empty name or the built-in one shows the built-in name in the current language again.
+			if (IsBuiltIn(index)) {
+				const std::string given = text.c_str();
+				def.title = given.empty() || given == def.name || given == Tr(def.name.c_str()) ? "" : given;
+			} else {
+				def.name = text.c_str();
+			}
+			m_list.SetText(index, 0, ColumnTitle(def));
 		} else if (id == IDC_COLUMN_PATTERN) {
+			if (def.kind != ColumnKind::Text) return;
 			uGetDlgItemText(m_hWnd, IDC_COLUMN_PATTERN, text);
 			def.pattern = text.c_str();
 			m_list.SetText(index, 1, def.pattern);
 			UpdatePreview();
 		} else {
+			if (def.kind == ColumnKind::Rating) return;
 			const int alignment = CComboBox(GetDlgItem(IDC_COLUMN_ALIGN)).GetCurSel();
 			if (alignment >= 0) def.alignment = static_cast<ColumnAlignment>(alignment);
 		}
+		m_list.SetText(index, 2, KindText(index));
+		GetDlgItem(IDC_COLUMN_RESTORE).EnableWindow(IsEditedRow(index));
 		m_callback->on_state_changed();
 	}
 
@@ -280,8 +317,20 @@ private:
 		const int index = SelectedIndex();
 		if (index < 0 || m_rows[index].def.kind == ColumnKind::Rating) return;
 		ColumnDef copy = m_rows[index].def;
-		copy.name = UnusedName(ColumnTitle(copy.name) + Tr(" copy"));
+		copy.name = UnusedName(ColumnTitle(copy) + Tr(" copy"));
+		copy.title.clear();
 		InsertCustom(copy);
+	}
+
+	// The selected built-in column as it came, still in or out of the menu as the user ticked it.
+	void OnRestore(UINT, int, CWindow) {
+		const int index = SelectedIndex();
+		if (!IsEditedRow(index)) return;
+		ColumnDef original = OriginalBuiltIn(index);
+		original.showInMenu = m_rows[index].def.showInMenu;
+		m_rows[index].def = original;
+		FillList(index);
+		m_callback->on_state_changed();
 	}
 
 	void OnDelete(UINT, int, CWindow) {

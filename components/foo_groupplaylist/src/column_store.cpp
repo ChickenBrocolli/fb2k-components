@@ -12,6 +12,10 @@ constexpr GUID guid_hidden_built_in_columns = { 0x2e318e16, 0x4072, 0x44b5, { 0x
 
 cfg_string cfg_hiddenBuiltInColumns(guid_hidden_built_in_columns, "");
 
+constexpr GUID guid_built_in_column_edits = { 0x801dd8ba, 0x51ef, 0x41b8, { 0x8e, 0x4f, 0xa4, 0xb8, 0x49, 0x4f, 0x1b, 0xc3 } };
+
+cfg_string cfg_builtInColumnEdits(guid_built_in_column_edits, "");
+
 } // namespace
 
 std::vector<ColumnDef> LoadCustomColumnDefs() {
@@ -22,6 +26,18 @@ std::vector<ColumnDef> LoadCustomColumnDefs() {
 
 void SaveCustomColumnDefs(const std::vector<ColumnDef>& defs) {
 	cfg_customColumns = SerializeColumnDefs(defs).c_str();
+}
+
+std::vector<ColumnDef> LoadBuiltInColumnEdits() {
+	return ParseBuiltInEdits(cfg_builtInColumnEdits.get().c_str());
+}
+
+void SaveBuiltInColumnEdits(const std::vector<ColumnDef>& edits) {
+	cfg_builtInColumnEdits = SerializeBuiltInEdits(edits).c_str();
+}
+
+std::vector<ColumnDef> SavedBuiltInColumnDefs() {
+	return ApplyBuiltInEdits(BuiltInColumnDefsForMenu(LoadHiddenBuiltInColumns()), LoadBuiltInColumnEdits());
 }
 
 std::vector<std::string> LoadHiddenBuiltInColumns() {

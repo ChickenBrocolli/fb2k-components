@@ -64,7 +64,7 @@ DWORD HeaderFormat(ColumnAlignment alignment) {
 }
 
 std::vector<ColumnDef> AllColumnDefs() {
-	std::vector<ColumnDef> defs = BuiltInColumnDefsForMenu(LoadHiddenBuiltInColumns());
+	std::vector<ColumnDef> defs = SavedBuiltInColumnDefs();
 	for (ColumnDef& def : LoadCustomColumnDefs()) defs.push_back(std::move(def));
 	return defs;
 }
@@ -264,7 +264,7 @@ void PlaylistView::RebuildColumns() {
 	m_listColumns.resize(kFirstTrackColumn);
 	for (const ColumnLayout::Column& column : m_layout.columns) {
 		const ColumnDef* def = FindColumnDef(column.name);
-		AddColumnF(ColumnTitle(def->name).c_str(), column.width, HeaderFormat(def->alignment), false);
+		AddColumnF(ColumnTitle(*def).c_str(), column.width, HeaderFormat(def->alignment), false);
 		ListColumn listColumn;
 		listColumn.kind = def->kind;
 		if (def->kind == ColumnKind::Rating) {
@@ -771,10 +771,10 @@ void PlaylistView::RenderGroupHeaderText2(size_t baseItem, const CRect& headerRe
 	textRect.top += Scaled(kBlockGap);
 	textRect = GetItemTextRect(textRect);
 	SelectObjectScope fontScope(dc, HeaderFont());
-	dc.SetTextColor(m_settings.headerColor);
+	dc.SetTextColor(HeaderTextColor());
 
 	// The summary sits at the right end in the track font. The album name and its rule stop before it.
-	const pfc::stringcvt::string_os_from_utf8 summary(AlbumSummary(baseItem).c_str());
+	const pfc::stringcvt::string_os_from_utf8 summary(ShowsHeaderSummary(m_settings.showTrackSummary, m_settings.trackSummaryPlace) ? AlbumSummary(baseItem).c_str() : "");
 	if (summary.length() > 0) {
 		SelectObjectScope summaryFont(dc, static_cast<HFONT>(GetFont()));
 		SIZE summarySize = {};
@@ -794,7 +794,7 @@ void PlaylistView::RenderGroupHeaderText2(size_t baseItem, const CRect& headerRe
 	const int ruleGap = textRect.Height() / 2;
 	if (dc.GetTextExtent(text, static_cast<int>(text.length()), &textSize) && textSize.cx + ruleGap < textRect.Width()) {
 		const int y = textRect.CenterPoint().y;
-		const COLORREF ruleColor = PaintUtils::BlendColor(m_settings.headerColor, GetSysColorHook(colorBackground), 25);
+		const COLORREF ruleColor = PaintUtils::BlendColor(HeaderTextColor(), GetSysColorHook(colorBackground), 25);
 		PaintUtils::DrawSmoothedLine(dc, CPoint(textRect.left + textSize.cx + ruleGap, y), CPoint(textRect.right, y), ruleColor, 1.0 * m_dpi.cy / 96.0);
 	}
 }
@@ -883,6 +883,18 @@ void PlaylistView::RenderTrackRow(t_size item, const CRect& rowRect, const CRect
 
 // A tint of the selection colour (the Default UI colour, or Windows' accent) over the background. The tint is
 // stronger on a dark background, where a pale one would hardly show, and weaker while the panel has no focus.
+COLORREF PlaylistView::HeaderTextColor() const {
+	return m_settings.customHeaderColor ? m_settings.headerColor : GetSysColorHook(colorHighlight);
+}
+
+COLORREF PlaylistView::LabelTextColor() const {
+	return m_settings.customLabelColor ? m_settings.labelColor : GetSysColorHook(colorHighlight);
+}
+
+COLORREF PlaylistView::StarFillColor() const {
+	return m_settings.customStarColor ? m_settings.starColor : GetSysColorHook(colorHighlight);
+}
+
 COLORREF PlaylistView::SelectionFill(bool focused) const {
 	const int percent = GetDarkMode() ? (focused ? 45 : 30) : (focused ? 22 : 13);
 	return PaintUtils::BlendColor(GetSysColorHook(colorBackground), GetSysColorHook(colorSelection), percent);
@@ -895,7 +907,7 @@ void PlaylistView::RenderSubgroupLabels(size_t item, const CRect& labelRect, CDC
 	DCStateScope state(dc);
 	dc.FillSolidRect(labelRect, GetSysColorHook(colorBackground));
 	SelectObjectScope fontScope(dc, static_cast<HGDIOBJ>(GetFont()));
-	dc.SetTextColor(m_settings.labelColor);
+	dc.SetTextColor(LabelTextColor());
 	dc.SetBkMode(TRANSPARENT);
 
 	const int rowHeight = GetItemHeight();
@@ -921,7 +933,7 @@ void PlaylistView::RenderSubgroupLabels(size_t item, const CRect& labelRect, CDC
 		// The section's tracks and length sit at the right end, as the album's do on the header.
 		// The label and its rule stop before them. The right end stays in sight when the columns run past the window.
 		CRect textRect = lineRect;
-		const pfc::stringcvt::string_os_from_utf8 summary(SectionSummary(item, level).c_str());
+		const pfc::stringcvt::string_os_from_utf8 summary(ShowsLabelSummary(m_settings.showTrackSummary, m_settings.trackSummaryPlace) ? SectionSummary(item, level).c_str() : "");
 		if (summary.length() > 0) {
 			SIZE summarySize = {};
 			dc.GetTextExtent(summary, static_cast<int>(summary.length()), &summarySize);
@@ -938,7 +950,7 @@ void PlaylistView::RenderSubgroupLabels(size_t item, const CRect& labelRect, CDC
 		const int ruleGap = rowHeight / 2;
 		if (level == 0 && dc.GetTextExtent(wide, static_cast<int>(wide.length()), &textSize) && textSize.cx + ruleGap < textRect.Width()) {
 			const int y = textRect.CenterPoint().y;
-			const COLORREF ruleColor = PaintUtils::BlendColor(m_settings.labelColor, GetSysColorHook(colorBackground), 25);
+			const COLORREF ruleColor = PaintUtils::BlendColor(LabelTextColor(), GetSysColorHook(colorBackground), 25);
 			PaintUtils::DrawSmoothedLine(dc, CPoint(textRect.left + textSize.cx + ruleGap, y), CPoint(textRect.right, y), ruleColor, 1.0 * m_dpi.cy / 96.0);
 		}
 		lineRect.OffsetRect(0, rowHeight);
@@ -1269,6 +1281,37 @@ int PlaylistView::StarSlotWidth() const {
 	return GetItemHeight() * 7 / 9;
 }
 
+// The stars come from the icon font Windows 11 apps draw theirs with (Segoe Fluent Icons), or its Windows 10
+// forerunner (Segoe MDL2 Assets): a filled star and an outline star made as a pair. Without either, the row font's
+// star characters stand in. The font follows the star slot, so it is made again when the row height changes.
+void PlaylistView::UpdateStarFont() {
+	const int height = StarSlotWidth() * 4 / 5;
+	// Looked up once per size, also when neither icon font is installed.
+	if (height == m_starFontHeight) return;
+	if (m_starFont) m_starFont.DeleteObject();
+	m_starFontHeight = height;
+	m_starFontIsIcons = false;
+	CWindowDC screen(NULL);
+	for (const wchar_t* face : { L"Segoe Fluent Icons", L"Segoe MDL2 Assets" }) {
+		LOGFONTW font = {};
+		font.lfHeight = -height;
+		font.lfCharSet = DEFAULT_CHARSET;
+		// Grey smoothing: ClearType's coloured fringes show on a small coloured shape.
+		font.lfQuality = ANTIALIASED_QUALITY;
+		wcsncpy_s(font.lfFaceName, face, _TRUNCATE);
+		CFont candidate;
+		if (!candidate.CreateFontIndirect(&font)) continue;
+		// Windows hands back another font when the face is missing; the name it picked tells.
+		SelectObjectScope scope(screen.m_hDC, static_cast<HFONT>(candidate));
+		wchar_t picked[LF_FACESIZE] = {};
+		::GetTextFaceW(screen, LF_FACESIZE, picked);
+		if (_wcsicmp(picked, face) != 0) continue;
+		m_starFont.Attach(candidate.Detach());
+		m_starFontIsIcons = true;
+		return;
+	}
+}
+
 void PlaylistView::RenderSubItemText(t_size item, t_size subItem, const CRect& subItemRect, const CRect& updateRect, CDCHandle dc, bool allowColors) {
 	// The playing track is drawn in bold, so it stands out even when the Playing column is hidden.
 	// The list control selects its own font for each row, so the bold font goes in here, per cell.
@@ -1295,15 +1338,27 @@ void PlaylistView::RenderSubItemText(t_size item, t_size subItem, const CRect& s
 		__super::RenderSubItemText(item, subItem, subItemRect, updateRect, dc, allowColors);
 		return;
 	}
-	const int rating = m_starHover.ShownRating(item, subItem, RatingOf(item, subItem));
+	const int savedRating = RatingOf(item, subItem);
+	const int rating = m_starHover.ShownRating(item, subItem, savedRating);
 	const int slot = StarSlotWidth();
+	UpdateStarFont();
 	DCStateScope state(dc);
+	if (m_starFontIsIcons) dc.SelectFont(m_starFont);
 	dc.SetBkMode(TRANSPARENT);
 	dc.IntersectClipRect(subItemRect);
 	const int left = subItemRect.left + RatingGapWidth(slot, static_cast<int>(GetColumnSpacing()));
 	CRect starRect(left, subItemRect.top, left + slot, subItemRect.top + GetItemHeight());
+	// Filled stars take the star colour and empty ones fade toward the background, so a rating reads at a glance.
+	// While the pointer previews a rating the filled stars are paler, as in the Windows rating control,
+	// so the preview does not look saved until the click.
+	const COLORREF background = GetSysColorHook(colorBackground);
+	const COLORREF filled = rating != savedRating ? PaintUtils::BlendColor(StarFillColor(), background, 45) : StarFillColor();
+	const COLORREF empty = PaintUtils::BlendColor(dc.GetTextColor(), background, 55);
+	const wchar_t* const filledGlyph = m_starFontIsIcons ? L"\xE735" : L"\x2605";
+	const wchar_t* const emptyGlyph = m_starFontIsIcons ? L"\xE734" : L"\x2606";
 	for (int star = 1; star <= kMaxRating; ++star) {
-		dc.DrawText(star <= rating ? L"\x2605" : L"\x2606", 1, starRect, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+		dc.SetTextColor(star <= rating ? filled : empty);
+		dc.DrawText(star <= rating ? filledGlyph : emptyGlyph, 1, starRect, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 		starRect.OffsetRect(slot, 0);
 	}
 }
@@ -1527,11 +1582,12 @@ void PlaylistView::ApplyFonts() {
 }
 
 // The cover column is sized to fit the cover, so a new cover size also sets that column's width.
-// An open Preferences page takes what a panel changed (PanelSettingsChanged), so its Apply keeps it.
+// An open Preferences page takes what a panel changed (PanelSettingsChanged), so its Apply keeps it,
+// and the panels go on showing the page's unapplied edits on top of the new settings.
 void PlaylistView::ApplyViewSettings(const ViewSettings& settings) {
 	SaveViewSettings(settings);
-	ShowViewSettings(LoadViewSettings());
 	PanelSettingsChanged();
+	ShowPreferencesPreview();
 }
 
 void PlaylistView::ShowViewSettings(const ViewSettings& settings) {

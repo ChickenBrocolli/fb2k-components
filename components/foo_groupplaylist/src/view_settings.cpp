@@ -38,6 +38,11 @@ cfg_bool cfg_customHeaderFont(SettingGuid(4), kDefaults.customHeaderFont);
 cfg_struct_t<LOGFONTW> cfg_headerFont(SettingGuid(5), kDefaults.headerFont);
 cfg_uint cfg_headerColor(SettingGuid(6), kDefaults.headerColor);
 cfg_uint cfg_labelColor(SettingGuid(7), kDefaults.labelColor);
+// -1 until saved once: UsesOwnTextColor then keeps a colour picked before 0.9.2.
+cfg_int cfg_customHeaderColor(SettingGuid(29), -1);
+cfg_int cfg_customLabelColor(SettingGuid(30), -1);
+cfg_bool cfg_customStarColor(SettingGuid(31), kDefaults.customStarColor);
+cfg_uint cfg_starColor(SettingGuid(32), kDefaults.starColor);
 cfg_int cfg_rowPadding(SettingGuid(8), kDefaults.rowPadding);
 cfg_int cfg_coverSize(SettingGuid(9), kDefaults.coverSize);
 cfg_bool cfg_presetPerPlaylist(SettingGuid(10), kDefaults.presetPerPlaylist);
@@ -57,6 +62,9 @@ cfg_float cfg_inertiaMax(SettingGuid(22), kDefaultInertia.maxAcceleration);
 cfg_string cfg_scrollPresetName(SettingGuid(23), kDefaultScrollPresetName);
 cfg_string cfg_userScrollPresets(SettingGuid(24), "");
 cfg_bool cfg_dragColumns(SettingGuid(25), kDefaults.dragColumns);
+cfg_bool cfg_showTrackSummary(SettingGuid(26), kDefaults.showTrackSummary);
+// 27 held a switch of a 0.9.2 build that was never released. It stays unused, so its saved value is not read as another type.
+cfg_int cfg_trackSummaryPlace(SettingGuid(28), static_cast<int>(kDefaults.trackSummaryPlace));
 
 // The numbers the panels scroll with: the saved ones until the Scrolling page changes them.
 std::optional<smooth_scroll::InertiaParams> g_liveInertia;
@@ -76,10 +84,16 @@ ViewSettings LoadViewSettings() {
 	settings.headerFont = cfg_headerFont.get();
 	settings.headerColor = static_cast<COLORREF>(cfg_headerColor.get());
 	settings.labelColor = static_cast<COLORREF>(cfg_labelColor.get());
+	settings.customHeaderColor = UsesOwnTextColor(static_cast<int>(cfg_customHeaderColor.get()), settings.headerColor);
+	settings.customLabelColor = UsesOwnTextColor(static_cast<int>(cfg_customLabelColor.get()), settings.labelColor);
+	settings.customStarColor = cfg_customStarColor;
+	settings.starColor = static_cast<COLORREF>(cfg_starColor.get());
 	settings.rowPadding = ClampRowPadding(static_cast<int>(cfg_rowPadding.get()));
 	settings.coverSize = ClampCoverSize(static_cast<int>(cfg_coverSize.get()));
 	settings.presetPerPlaylist = cfg_presetPerPlaylist;
 	settings.dimBrackets = cfg_dimBrackets;
+	settings.showTrackSummary = cfg_showTrackSummary;
+	settings.trackSummaryPlace = TrackSummaryPlaceFrom(static_cast<int>(cfg_trackSummaryPlace.get()));
 	settings.sortOnHeaderClick = cfg_sortOnHeaderClick;
 	settings.dragColumns = cfg_dragColumns;
 	settings.scrollPerPlaylist = cfg_scrollPerPlaylist;
@@ -96,10 +110,16 @@ void SaveViewSettings(const ViewSettings& settings) {
 	cfg_headerFont = settings.headerFont;
 	cfg_headerColor = static_cast<t_uint32>(settings.headerColor);
 	cfg_labelColor = static_cast<t_uint32>(settings.labelColor);
+	cfg_customHeaderColor = settings.customHeaderColor ? 1 : 0;
+	cfg_customLabelColor = settings.customLabelColor ? 1 : 0;
+	cfg_customStarColor = settings.customStarColor;
+	cfg_starColor = static_cast<t_uint32>(settings.starColor);
 	cfg_rowPadding = ClampRowPadding(settings.rowPadding);
 	cfg_coverSize = ClampCoverSize(settings.coverSize);
 	cfg_presetPerPlaylist = settings.presetPerPlaylist;
 	cfg_dimBrackets = settings.dimBrackets;
+	cfg_showTrackSummary = settings.showTrackSummary;
+	cfg_trackSummaryPlace = static_cast<int>(settings.trackSummaryPlace);
 	cfg_sortOnHeaderClick = settings.sortOnHeaderClick;
 	cfg_dragColumns = settings.dragColumns;
 	cfg_scrollPerPlaylist = settings.scrollPerPlaylist;

@@ -86,6 +86,7 @@
     <ClCompile Include="preset_store.cpp" />
     <ClCompile Include="rating_store.cpp" />
     <ClCompile Include="smooth_scroll.cpp" />
+    <ClCompile Include="track_menu.cpp" />
     <ClCompile Include="ui_language.cpp" />
     <ClCompile Include="view_settings.cpp" />
   </ItemGroup>
@@ -94,6 +95,8 @@
     <ClInclude Include="column_fit.h" />
     <ClInclude Include="column_places.h" />
     <ClInclude Include="header_sort.h" />
+    <ClInclude Include="selection_order.h" />
+    <ClInclude Include="track_menu.h" />
     <ClInclude Include="scroll_presets.h" />
     <ClInclude Include="settings_file.h" />
     <ClInclude Include="settings_transfer.h" />

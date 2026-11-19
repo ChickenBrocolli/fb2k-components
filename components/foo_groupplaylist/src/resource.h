@@ -8,6 +8,7 @@
 #define IDC_COLUMN_NAME      1004
 #define IDC_COLUMN_PATTERN   1005
 #define IDC_COLUMN_ALIGN     1006
+#define IDC_COLUMN_RESTORE   1015
 #define IDC_COLUMN_SYNTAX    1007
 #define IDC_COLUMN_INSERT    1008
 #define IDC_COLUMN_PREVIEW   1009
@@ -62,8 +63,17 @@
 #define IDC_PREF_EXPORT             1224
 #define IDC_PREF_IMPORT             1225
 #define IDC_PREF_DRAG_COLUMNS       1226
+#define IDC_PREF_TRACK_SUMMARY      1227
+#define IDC_PREF_SUMMARY_PLACE      1228
+#define IDC_PREF_HEADER_COLOR_CUSTOM 1229
+#define IDC_PREF_LABEL_COLOR_CUSTOM 1230
+#define IDC_PREF_STAR_COLOR_CUSTOM  1231
+#define IDC_PREF_STAR_SWATCH        1232
+#define IDC_PREF_STAR_COLOR         1233
 
 #define IDD_SCROLL_PAGE      104
+#define IDD_SORT_BY          105
+#define IDC_SORT_PATTERN     1501
 
 // One slider and one number box per smooth_scroll::InertiaParams value, in the order of kInertiaSettings.
 #define IDC_SCROLL_SLIDER_0         1301

@@ -55,9 +55,35 @@ void InertiaNumbersKeepTheDecimalsThePageShows() {
 	CHECK(ClampInertiaValue(glide, 90.4) == 90.0);
 }
 
+void TheTrackSummaryShowsOnlyWhereItWasPicked() {
+	CHECK(ShowsHeaderSummary(true, TrackSummaryPlace::HeadersAndLabels) && ShowsLabelSummary(true, TrackSummaryPlace::HeadersAndLabels));
+	CHECK(ShowsHeaderSummary(true, TrackSummaryPlace::Headers) && !ShowsLabelSummary(true, TrackSummaryPlace::Headers));
+	CHECK(!ShowsHeaderSummary(true, TrackSummaryPlace::Labels) && ShowsLabelSummary(true, TrackSummaryPlace::Labels));
+}
+
+void ATrackSummaryTurnedOffShowsNowhere() {
+	for (const TrackSummaryPlace place : { TrackSummaryPlace::HeadersAndLabels, TrackSummaryPlace::Headers, TrackSummaryPlace::Labels }) {
+		CHECK(!ShowsHeaderSummary(false, place) && !ShowsLabelSummary(false, place));
+	}
+}
+
+void AnOrangeNobodyChangedFollowsFoobar() {
+	CHECK(!UsesOwnTextColor(-1, kOrangeTextColor));
+	CHECK(UsesOwnTextColor(-1, 0x00FF0000));
+}
+
+void AStoredChoiceIsKept() {
+	CHECK(UsesOwnTextColor(1, kOrangeTextColor));
+	CHECK(!UsesOwnTextColor(0, 0x00FF0000));
+}
+
 } // namespace
 
 void RunViewSettingsTests() {
+	AnOrangeNobodyChangedFollowsFoobar();
+	AStoredChoiceIsKept();
+	TheTrackSummaryShowsOnlyWhereItWasPicked();
+	ATrackSummaryTurnedOffShowsNowhere();
 	ACoverSizeInsideTheRangeIsKept();
 	ACoverSizeOutsideTheRangeIsPulledIn();
 	ARowPaddingOutsideTheRangeIsPulledIn();

@@ -18,14 +18,26 @@ struct ViewSettings {
 	// When false the group header uses the track font, larger and bold, as the list control draws it.
 	bool customHeaderFont = false;
 	LOGFONTW headerFont = {};
-	COLORREF headerColor = RGB(230, 126, 34);
-	COLORREF labelColor = RGB(230, 126, 34);
+	// When false the group header and label text take foobar2000's highlight colour (Default UI colours),
+	// so they follow the colour scheme. The colours below are the user's own, kept while it is off.
+	bool customHeaderColor = false;
+	bool customLabelColor = false;
+	COLORREF headerColor = kOrangeTextColor;
+	COLORREF labelColor = kOrangeTextColor;
+	// When false the filled rating stars take foobar2000's highlight colour, as the header and label text do.
+	bool customStarColor = false;
+	COLORREF starColor = kOrangeTextColor;
 	int rowPadding = kDefaultRowPadding;
 	int coverSize = kDefaultCoverSize;
 	// Behaviour.
 	// Off by default: the panel keeps one preset for every playlist until the user asks for one per playlist.
 	bool presetPerPlaylist = false;
 	bool dimBrackets = true;
+	// On by default: group headers and label rows show their track count and length at the right end.
+	// The place picks one of them, as a grouping by album artist then album may want the count on one only.
+	// Turned off and on again, the count comes back where it was.
+	bool showTrackSummary = true;
+	TrackSummaryPlace trackSummaryPlace = TrackSummaryPlace::HeadersAndLabels;
 	bool sortOnHeaderClick = true;
 	// On by default: column titles drag to reorder the columns. Off locks the order once the user likes it,
 	// as foobar2000 locks its layout outside layout editing mode. Widths can still be dragged.

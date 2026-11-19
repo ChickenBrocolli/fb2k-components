@@ -191,6 +191,61 @@ void RenamingClashesASecondTimeChangesNothing() {
 	}
 }
 
+const ColumnDef* Named(const std::vector<ColumnDef>& defs, const std::string& name) {
+	for (const ColumnDef& def : defs) {
+		if (def.name == name) return &def;
+	}
+	return nullptr;
+}
+
+void AnEditedBuiltInColumnSurvivesSavingAndLoading() {
+	ColumnDef edit = { "Title", "%title% [%subtitle%]", ColumnAlignment::Center, 0 };
+	edit.title = "Song";
+	const std::vector<ColumnDef> loaded = ParseBuiltInEdits(SerializeBuiltInEdits({ edit }));
+	CHECK(loaded.size() == 1);
+	CHECK(!loaded.empty() && loaded[0].name == "Title" && loaded[0].title == "Song");
+	CHECK(!loaded.empty() && loaded[0].pattern == "%title% [%subtitle%]" && loaded[0].alignment == ColumnAlignment::Center);
+	CHECK(ParseBuiltInEdits("Title\tSong\n\t\tx\t0\n").empty());
+}
+
+void OnlyChangedBuiltInColumnsAreKept() {
+	const std::vector<ColumnDef> originals = BuiltInColumnDefs();
+	std::vector<ColumnDef> defs = originals;
+	CHECK(BuiltInEditsFrom(originals, defs).empty());
+	for (ColumnDef& def : defs) {
+		if (def.name == "Artist") def.alignment = ColumnAlignment::Right;
+	}
+	const std::vector<ColumnDef> edits = BuiltInEditsFrom(originals, defs);
+	CHECK(edits.size() == 1 && edits[0].name == "Artist");
+}
+
+void EditsReachTheirColumnOnly() {
+	ColumnDef title = { "Title", "%title% [%subtitle%]", ColumnAlignment::Left, 0 };
+	title.title = "Song";
+	ColumnDef rating = { "Rating", "%rating%", ColumnAlignment::Right, 0 };
+	ColumnDef duration = { "Duration", "%length_seconds%", ColumnAlignment::Left, 0 };
+	ColumnDef unknown = { "No such column", "%x%", ColumnAlignment::Left, 0 };
+	const std::vector<ColumnDef> defs = ApplyBuiltInEdits(BuiltInColumnDefs(), { title, rating, duration, unknown });
+	CHECK(defs.size() == BuiltInColumnDefs().size());
+	const ColumnDef* shown = Named(defs, "Title");
+	CHECK(shown && shown->title == "Song" && shown->pattern == "%title% [%subtitle%]");
+	const ColumnDef* stars = Named(defs, "Rating");
+	CHECK(stars && stars->pattern.empty() && stars->alignment == ColumnAlignment::Left);
+	const ColumnDef* length = Named(defs, "Duration");
+	CHECK(length && length->pattern == "%length%" && length->alignment == ColumnAlignment::Left);
+	const ColumnDef* artist = Named(defs, "Artist");
+	CHECK(artist && artist->title.empty() && artist->pattern == "%artist%");
+	CHECK(!Named(defs, "No such column"));
+}
+
+void AGivenNameAloneCountsAsAnEdit() {
+	const ColumnDef original = *Named(BuiltInColumnDefs(), "Album");
+	ColumnDef renamed = original;
+	CHECK(!IsEditedBuiltIn(renamed, original));
+	renamed.title = "Record";
+	CHECK(IsEditedBuiltIn(renamed, original));
+}
+
 } // namespace
 
 void RunColumnDefTests() {
@@ -215,4 +270,8 @@ void RunColumnDefTests() {
 	ARenameNeverLandsOnATakenName();
 	ColumnsWithoutAClashStayAsTheyAre();
 	RenamingClashesASecondTimeChangesNothing();
+	AnEditedBuiltInColumnSurvivesSavingAndLoading();
+	OnlyChangedBuiltInColumnsAreKept();
+	EditsReachTheirColumnOnly();
+	AGivenNameAloneCountsAsAnEdit();
 }

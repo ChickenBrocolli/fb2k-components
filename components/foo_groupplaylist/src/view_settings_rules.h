@@ -4,12 +4,41 @@
 // Standard library only, so the unit tests build without the foobar2000 SDK.
 
 #include <cmath>
+#include <cstdint>
 
 #include "smooth_scroll_math.h"
 
 constexpr int kDefaultCoverSize = 98;
 constexpr int kMinCoverSize = 48;
 constexpr int kMaxCoverSize = 300;
+
+// The colour of the group header and label text before 0.9.2, as Windows stores it (0x00BBGGRR).
+constexpr std::uint32_t kOrangeTextColor = 0x00227EE6;
+
+// Whether the group header or label text uses its own colour rather than foobar2000's highlight colour.
+// saved is the stored choice: 1 or 0, or -1 when it was never stored. Then the text keeps its own colour only if
+// someone picked one before 0.9.2, so an orange that was never changed starts following foobar2000.
+inline bool UsesOwnTextColor(int saved, std::uint32_t savedColor) {
+	return saved < 0 ? savedColor != kOrangeTextColor : saved != 0;
+}
+
+// Where group headers and label rows show their track count and length, when that is on.
+// The order follows the drop-down list on the Preferences page and the number in a settings file.
+enum class TrackSummaryPlace { HeadersAndLabels, Headers, Labels };
+constexpr int kTrackSummaryPlaceCount = 3;
+
+inline bool ShowsHeaderSummary(bool on, TrackSummaryPlace place) {
+	return on && place != TrackSummaryPlace::Labels;
+}
+
+inline bool ShowsLabelSummary(bool on, TrackSummaryPlace place) {
+	return on && place != TrackSummaryPlace::Headers;
+}
+
+// A place read from the saved settings or a settings file. A number outside the list means both.
+inline TrackSummaryPlace TrackSummaryPlaceFrom(int number) {
+	return number >= 0 && number < kTrackSummaryPlaceCount ? static_cast<TrackSummaryPlace>(number) : TrackSummaryPlace::HeadersAndLabels;
+}
 
 constexpr int kDefaultRowPadding = 0;
 constexpr int kMinRowPadding = 0;

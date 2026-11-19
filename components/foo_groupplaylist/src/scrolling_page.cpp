@@ -13,9 +13,8 @@
 #include "view_settings.h"
 
 // Preferences > Tools > GroupPlaylist > Scrolling: header pinning, smooth scrolling, and its numbers and presets.
-// Unlike the other pages, a change shows in every panel at once (PlaylistView::ShowViewSettings, SetLiveInertiaParams),
-// so it can be felt with the wheel while the page is open. Apply saves; a page closed without Apply puts the saved
-// settings back.
+// A change shows in every panel at once (ShowPreferencesPreview, SetLiveInertiaParams), so it can be felt with the
+// wheel while the page is open. Apply saves; a page closed without Apply puts the saved settings back.
 
 namespace {
 
@@ -95,6 +94,9 @@ public:
 	// foobar2000 keeps a page that was shown until Preferences closes.
 	static ScrollingDialog* s_open;
 
+	// The page's part of the panels' preview while it is shown (ShowPreferencesPreview).
+	ViewSettings WithEdits(const ViewSettings& view) const { return m_previewing ? WithScrollValues(view, m_values) : view; }
+
 	t_uint32 get_state() override {
 		t_uint32 state = preferences_state::resettable | preferences_state::dark_mode_supported;
 		if (!(m_values == SavedScrollValues())) state |= preferences_state::changed;
@@ -151,10 +153,9 @@ public:
 			taken = true;
 		}
 		m_lastSaved = saved;
-		// The menu redrew the panels with the saved settings and may have set the scroll numbers. The panels show
-		// the page's own again, as before the menu was used.
+		// The menu may have set the scroll numbers. The panels scroll with the page's own again, as before the menu
+		// was used, and ApplyViewSettings shows the page's smooth scrolling and pinning after this.
 		SetLiveInertiaParams(m_values.params);
-		if (!SameViewPart(m_values, saved)) PlaylistView::ShowViewSettings(WithScrollValues(LoadViewSettings(), m_values));
 		m_shown.smoothScroll = m_values.smoothScroll;
 		m_shown.pinHeaders = m_values.pinHeaders;
 		if (!taken) return;
@@ -189,14 +190,15 @@ private:
 		}
 		CEdit(GetDlgItem(IDC_SCROLL_NEW_NAME)).SetLimitText(60);
 		ShowValues();
+		m_previewing = true;
 		return FALSE;
 	}
 
 	void OnDestroy() {
 		// Not applied: the panels show and scroll with the saved settings again.
 		SetLiveInertiaParams(LoadInertiaParams());
-		const ScrollValues saved = SavedScrollValues();
-		if (!SameViewPart(m_shown, saved)) PlaylistView::ShowViewSettings(LoadViewSettings());
+		m_previewing = false;
+		if (!SameViewPart(m_shown, SavedScrollValues())) ShowPreferencesPreview();
 		SetMsgHandled(FALSE);
 	}
 
@@ -274,7 +276,7 @@ private:
 		SetLiveInertiaParams(m_values.params);
 		if (IsCustom() != m_listedCustom) FillPresets();
 		if (!SameViewPart(m_shown, m_values)) {
-			PlaylistView::ShowViewSettings(WithScrollValues(LoadViewSettings(), m_values));
+			ShowPreferencesPreview();
 			m_shown.smoothScroll = m_values.smoothScroll;
 			m_shown.pinHeaders = m_values.pinHeaders;
 		}
@@ -383,6 +385,8 @@ private:
 	ScrollValues m_lastSaved;
 	// True while the page writes a number into a box, so that write is not read back as typing.
 	bool m_showing = false;
+	// True from the page's creation until it closes, the time its edits show in the panels.
+	bool m_previewing = false;
 	// Whether the preset list ends with "Custom (unsaved)", and the name the page offered for those numbers.
 	bool m_listedCustom = false;
 	std::wstring m_offeredName;
@@ -411,6 +415,10 @@ void ShowScrollingPage() {
 	ui_control::get()->show_preferences(guid_scrolling_page);
 }
 
-void MenuTogglesChanged() {
+void TakeScrollingPageChanges() {
 	if (ScrollingDialog::s_open) ScrollingDialog::s_open->TakeMenuToggles();
+}
+
+ViewSettings WithScrollingPageEdits(const ViewSettings& view) {
+	return ScrollingDialog::s_open ? ScrollingDialog::s_open->WithEdits(view) : view;
 }

@@ -49,6 +49,7 @@
     <ClCompile Include="header_sort_tests.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="rating_cell_tests.cpp" />
+    <ClCompile Include="selection_order_tests.cpp" />
     <ClCompile Include="settings_tests.cpp" />
     <ClCompile Include="smooth_scroll_tests.cpp" />
     <ClCompile Include="text_parts_tests.cpp" />
