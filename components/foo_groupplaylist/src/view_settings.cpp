@@ -56,6 +56,7 @@ cfg_float cfg_inertiaStep(SettingGuid(21), kDefaultInertia.accelerationStep);
 cfg_float cfg_inertiaMax(SettingGuid(22), kDefaultInertia.maxAcceleration);
 cfg_string cfg_scrollPresetName(SettingGuid(23), kDefaultScrollPresetName);
 cfg_string cfg_userScrollPresets(SettingGuid(24), "");
+cfg_bool cfg_dragColumns(SettingGuid(25), kDefaults.dragColumns);
 
 // The numbers the panels scroll with: the saved ones until the Scrolling page changes them.
 std::optional<smooth_scroll::InertiaParams> g_liveInertia;
@@ -80,6 +81,7 @@ ViewSettings LoadViewSettings() {
 	settings.presetPerPlaylist = cfg_presetPerPlaylist;
 	settings.dimBrackets = cfg_dimBrackets;
 	settings.sortOnHeaderClick = cfg_sortOnHeaderClick;
+	settings.dragColumns = cfg_dragColumns;
 	settings.scrollPerPlaylist = cfg_scrollPerPlaylist;
 	settings.boldPlaying = cfg_boldPlaying;
 	settings.pinHeaders = cfg_pinHeaders;
@@ -99,6 +101,7 @@ void SaveViewSettings(const ViewSettings& settings) {
 	cfg_presetPerPlaylist = settings.presetPerPlaylist;
 	cfg_dimBrackets = settings.dimBrackets;
 	cfg_sortOnHeaderClick = settings.sortOnHeaderClick;
+	cfg_dragColumns = settings.dragColumns;
 	cfg_scrollPerPlaylist = settings.scrollPerPlaylist;
 	cfg_boldPlaying = settings.boldPlaying;
 	cfg_pinHeaders = settings.pinHeaders;

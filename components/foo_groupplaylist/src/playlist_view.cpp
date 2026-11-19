@@ -2,8 +2,10 @@
 
 #include <libPPUI/PaintUtils.h>
 
+#include "column_fit.h"
 #include "column_store.h"
 #include "playlist_view.h"
+#include "preferences_pages.h"
 #include "preset_store.h"
 #include "rating_cell.h"
 #include "rating_store.h"
@@ -21,6 +23,8 @@ constexpr size_t kFirstTrackColumn = 2;
 // Sizes in pixels at 96 DPI. The cover size is a setting.
 constexpr int kCoverInset = 4;
 constexpr int kBlockGap = 12;
+// The narrowest a track column gets from a drag while the columns fill the panel.
+constexpr int kMinFitColumnWidth = 16;
 
 constexpr unsigned kPlaylistCallbacks =
 	playlist_callback_single::flag_on_items_added |
@@ -131,18 +135,23 @@ bool PlaylistView::IsColumnShown(const std::string& name) const {
 	return false;
 }
 
-// A column that is turned on goes to the right end with its default width.
+// A column that is turned on goes after the last track column with its default width,
+// so a cover dragged to the right end stays there.
 void PlaylistView::ToggleColumn(const std::string& name) {
 	const ColumnDef* def = FindColumnDef(name);
 	if (!def) return;
 	m_layout = CapturedLayout();
 	auto& columns = m_layout.columns;
 	const auto shown = std::find_if(columns.begin(), columns.end(), [&](const ColumnLayout::Column& column) { return column.name == name; });
-	if (shown != columns.end()) {
-		columns.erase(shown);
-	} else {
+	std::vector<bool> kept(columns.size(), true);
+	const bool adding = shown == columns.end();
+	if (adding) {
 		columns.push_back({ name, def->width });
+	} else {
+		kept[static_cast<size_t>(shown - columns.begin())] = false;
+		columns.erase(shown);
 	}
+	m_layout.places = PlacesAfterTrackChange(m_layout.places, kept, adding ? 1 : 0);
 	if (m_hWnd) RebuildColumns();
 }
 
@@ -150,8 +159,9 @@ ColumnLayout PlaylistView::GetColumnLayout() {
 	return CapturedLayout();
 }
 
-// The user reorders columns by dragging header titles. The header control keeps that order
-// apart from the column indices, so the copy lists the columns as they appear on screen.
+// The user reorders columns by dragging header titles, the cover and info columns too. The header control keeps
+// that order apart from the column indices, so the copy lists the track columns as they appear on screen,
+// and CaptureColumnWidths reads where the cover and info columns are.
 ColumnLayout PlaylistView::CapturedLayout() {
 	CaptureColumnWidths();
 	ColumnLayout layout = m_layout;
@@ -163,32 +173,85 @@ ColumnLayout PlaylistView::CapturedLayout() {
 	return layout;
 }
 
-// The cover and info columns stay at the left. Returning true tells the header the drag was
-// handled, which leaves the order unchanged.
+// With column dragging off the header does not start a drag (ApplyHeaderDragging); this refuses one that starts anyway.
 bool PlaylistView::OnColumnHeaderDrag(t_size listColumn, t_size newPosition) {
-	if (listColumn < kFirstTrackColumn || newPosition < kFirstTrackColumn) return true;
+	if (!m_settings.dragColumns) return true;
 	return __super::OnColumnHeaderDrag(listColumn, newPosition);
+}
+
+// The header's own drag style follows the setting, so with dragging off a column title does not even lift.
+void PlaylistView::ApplyHeaderDragging() {
+	if (!IsHeaderEnabled()) return;
+	GetHeaderCtrl().ModifyStyle(m_settings.dragColumns ? 0 : HDS_DRAGDROP, m_settings.dragColumns ? HDS_DRAGDROP : 0);
 }
 
 // Names with no column definition are dropped, so a layout saved with a column that no longer exists still loads.
 void PlaylistView::SetColumnLayout(const ColumnLayout& layout) {
 	m_layout = layout;
 	auto& columns = m_layout.columns;
+	std::vector<bool> kept;
+	for (const ColumnLayout::Column& column : columns) kept.push_back(FindColumnDef(column.name) != nullptr);
 	columns.erase(std::remove_if(columns.begin(), columns.end(), [this](const ColumnLayout::Column& column) { return !FindColumnDef(column.name); }), columns.end());
+	m_layout.places = PlacesAfterTrackChange(m_layout.places, kept, 0);
 	if (m_hWnd) RebuildColumns();
 }
 
 // While the window exists the header control owns the widths, because the user drags them there.
 void PlaylistView::CaptureColumnWidths() {
 	if (!m_hWnd || GetColumnCount() != kFirstTrackColumn + m_layout.columns.size()) return;
+	m_layout.places = PlacesFromOrder(GetColumnOrderArray());
 	// Without groups the cover and info columns are hidden, and their widths are kept for when groups come back.
 	if (!m_ungrouped) {
 		m_layout.coverWidth = GetColumnWidthF(kCoverColumn);
 		if (m_blockLineCount > 0) m_layout.infoWidth = GetColumnWidthF(kInfoColumn);
 	}
+	// While the columns fill the panel, their saved widths are the proportions, and the screen shows them
+	// rounded to the panel's width. Reading them back on every resize would let the rounding pile up.
+	if (!m_autoSizeColumns) SaveTrackColumnWeights();
+}
+
+void PlaylistView::SaveTrackColumnWeights() {
 	for (size_t index = 0; index < m_layout.columns.size(); ++index) {
 		m_layout.columns[index].width = GetColumnWidthF(kFirstTrackColumn + index);
 	}
+}
+
+void PlaylistView::SetAutoSizeColumns(bool on) {
+	if (on == m_autoSizeColumns) return;
+	// Either way the widths on screen are kept: as the proportions when it turns on, as they are when it turns off.
+	m_autoSizeColumns = false;
+	CaptureColumnWidths();
+	m_autoSizeColumns = on;
+	FitTrackColumns();
+}
+
+// The track columns as they appear on screen, left to right. The user can drag them into another order.
+std::vector<size_t> PlaylistView::TrackColumnsOnScreen() const {
+	std::vector<size_t> columns;
+	for (const int listColumn : GetColumnOrderArray()) {
+		if (listColumn >= static_cast<int>(kFirstTrackColumn)) columns.push_back(static_cast<size_t>(listColumn));
+	}
+	return columns;
+}
+
+// The space beside the cover and info columns goes to the track columns in proportion to their saved widths.
+// A panel narrower than the cover and info columns leaves the track columns no width until it is widened again.
+void PlaylistView::FitTrackColumns() {
+	if (!m_autoSizeColumns || !m_hWnd || m_layout.columns.empty() || GetColumnCount() != kFirstTrackColumn + m_layout.columns.size()) return;
+	const int available = GetClientRectHook().Width() - static_cast<int>(GetSubItemWidth(kCoverColumn) + GetSubItemWidth(kInfoColumn));
+	std::vector<float> weights;
+	for (const ColumnLayout::Column& column : m_layout.columns) weights.push_back(column.width);
+	const std::vector<int> widths = FitColumnWidths(weights, available);
+	bool changed = false;
+	{
+		pfc::vartoggle_t<bool> fitting(m_fittingColumns, true);
+		for (size_t index = 0; index < widths.size(); ++index) {
+			if (static_cast<int>(GetSubItemWidth(kFirstTrackColumn + index)) == widths[index]) continue;
+			ResizeColumn(kFirstTrackColumn + index, static_cast<t_uint32>(widths[index]), false);
+			changed = true;
+		}
+	}
+	if (changed) OnColumnsChanged();
 }
 
 void PlaylistView::RebuildColumns() {
@@ -215,6 +278,14 @@ void PlaylistView::RebuildColumns() {
 		}
 		m_listColumns.push_back(listColumn);
 	}
+	// The columns were added in list order; the header shows the cover and info columns where the user put them.
+	std::vector<int> order = ScreenOrder(m_layout.columns.size(), m_layout.places);
+	m_layout.places = PlacesFromOrder(order);
+	if (IsHeaderEnabled()) {
+		GetHeaderCtrl().SetOrderArray(static_cast<int>(order.size()), order.data());
+		OnColumnsChanged();
+	}
+	FitTrackColumns();
 	ReloadData();
 }
 
@@ -423,6 +494,7 @@ void PlaylistView::ShowGroupingColumns() {
 		ResizeColumn(kCoverColumn, m_ungrouped ? 0 : MulDiv(static_cast<int>(m_layout.coverWidth + 0.5f), m_dpi.cx, 96));
 	}
 	ShowInfoColumn(!m_ungrouped && m_blockLineCount > 0);
+	FitTrackColumns();
 }
 
 void PlaylistView::ShowInfoColumn(bool show) {
@@ -459,7 +531,7 @@ void PlaylistView::OnGroupPresetsChanged(const std::vector<std::pair<std::string
 void PlaylistView::AttachToPlaylist() {
 	SetPlaylistStyle();
 	// HDS_BUTTONS makes the header report clicks, which sort the playlist (OnColumnHeaderClick).
-	InitializeHeaderCtrl(HDS_FULLDRAG | HDS_DRAGDROP | HDS_BUTTONS);
+	InitializeHeaderCtrl(HDS_FULLDRAG | (m_settings.dragColumns ? HDS_DRAGDROP : 0) | HDS_BUTTONS);
 	RebuildColumns();
 	set_callback_flags(kPlaylistCallbacks);
 	play_callback_reregister(kPlaybackCallbacks);
@@ -729,6 +801,7 @@ void PlaylistView::RenderGroupHeaderText2(size_t baseItem, const CRect& headerRe
 
 void PlaylistView::ListHandleResize() noexcept {
 	__super::ListHandleResize();
+	FitTrackColumns();
 	CRect client;
 	GetClientRect(client);
 	if (client.Width() != m_lastClientWidth) {
@@ -829,7 +902,16 @@ void PlaylistView::RenderSubgroupLabels(size_t item, const CRect& labelRect, CDC
 	const int padding = static_cast<int>(GetColumnSpacing());
 	CRect client;
 	GetClientRect(client);
-	CRect lineRect(GetSubItemRect(item, kInfoColumn).right + padding, labelRect.top, labelRect.right - padding, labelRect.top + rowHeight);
+	// The labels go over the widest run of track columns side by side, clear of the cover and info columns wherever
+	// the user put them. With those at one end, that is all the track columns.
+	const std::vector<int> order = GetColumnOrderArray();
+	std::vector<int> widths;
+	for (const int column : order) widths.push_back(static_cast<int>(GetSubItemWidth(static_cast<size_t>(column))));
+	const std::optional<std::pair<size_t, size_t>> run = WidestTrackRun(order, widths);
+	if (!run) return;
+	const int left = GetSubItemRect(item, static_cast<size_t>(order[run->first])).left;
+	const int right = GetSubItemRect(item, static_cast<size_t>(order[run->second])).right;
+	CRect lineRect(left + padding, labelRect.top, right - padding, labelRect.top + rowHeight);
 	pfc::string8_fastalloc text;
 	for (size_t level = label->firstLevel; level < m_subgroupScripts.size(); ++level) {
 		if (!m_groups.IsLevelShown(item, level)) continue;
@@ -1313,6 +1395,68 @@ LRESULT PlaylistView::OnCoverWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled) {
 	return 0;
 }
 
+// While the columns fill the panel, dragging a track column's divider moves only the border between it
+// and the next column on screen, so the right edge stays at the panel's edge. The header's own change
+// is refused and both widths are set here. The last column's divider is the panel's edge and does not move.
+LRESULT PlaylistView::OnHeaderItemChanging(int, LPNMHDR header, BOOL& handled) {
+	handled = FALSE;
+	const NMHEADER* change = reinterpret_cast<NMHEADER*>(header);
+	if (!m_autoSizeColumns || m_fittingColumns || !change->pitem || !(change->pitem->mask & HDI_WIDTH)) return FALSE;
+	const std::vector<size_t> onScreen = TrackColumnsOnScreen();
+	const auto dragged = std::find(onScreen.begin(), onScreen.end(), static_cast<size_t>(change->iItem));
+	if (dragged == onScreen.end()) return FALSE;
+	handled = TRUE;
+	if (dragged + 1 == onScreen.end()) return TRUE;
+	const size_t neighbor = *(dragged + 1);
+	const SharedWidths widths = ShareWithNeighbor(static_cast<int>(GetSubItemWidth(*dragged)), static_cast<int>(GetSubItemWidth(neighbor)),
+		change->pitem->cxy, Scaled(kMinFitColumnWidth));
+	{
+		pfc::vartoggle_t<bool> fitting(m_fittingColumns, true);
+		ResizeColumn(*dragged, static_cast<t_uint32>(widths.dragged), false);
+		ResizeColumn(neighbor, static_cast<t_uint32>(widths.neighbor), false);
+	}
+	OnColumnsChanged();
+	return TRUE;
+}
+
+// The work waits for a posted message, because rebuilding the columns inside the header's notice would
+// pull the columns out from under the header while it still handles the drag.
+LRESULT PlaylistView::OnHeaderEndTrack(int, LPNMHDR header, BOOL& handled) {
+	handled = FALSE;
+	PostMessage(kColumnDragEndedMessage, static_cast<WPARAM>(reinterpret_cast<NMHEADER*>(header)->iItem));
+	return 0;
+}
+
+// The list would size the cover column to its text, which is empty. While the columns fill the panel,
+// sizing one column to its text would leave them wider or narrower than the panel. So a double-click keeps the width.
+LRESULT PlaylistView::OnHeaderDividerDoubleClick(int, LPNMHDR header, BOOL& handled) {
+	handled = m_autoSizeColumns || reinterpret_cast<NMHEADER*>(header)->iItem == static_cast<int>(kCoverColumn);
+	return 0;
+}
+
+LRESULT PlaylistView::OnColumnDragEnded(UINT, WPARAM column, LPARAM, BOOL&) {
+	if (column == kCoverColumn && !m_ungrouped) {
+		ApplyCoverColumnWidth();
+	} else if (m_autoSizeColumns) {
+		// A track column's drag took its width from its neighbor, so the widths on screen become the proportions.
+		if (column >= kFirstTrackColumn) SaveTrackColumnWeights();
+		CaptureColumnWidths();
+		FitTrackColumns();
+	}
+	return 0;
+}
+
+// Dragging the cover column's divider sets the cover size, as in the Default UI playlist. The size is set when
+// the drag ends, because each new size reads every cover again. The column snaps to the cover,
+// so a width outside the allowed cover sizes springs back to the nearest one.
+void PlaylistView::ApplyCoverColumnWidth() {
+	const int width = MulDiv(GetSubItemWidth(kCoverColumn), 96, m_dpi.cx);
+	ViewSettings settings = LoadViewSettings();
+	settings.coverSize = ClampCoverSize(width - 2 * kCoverInset);
+	if (settings.coverSize == m_settings.coverSize && width == settings.coverSize + 2 * kCoverInset) return;
+	ApplyViewSettings(settings);
+}
+
 // The wheel without Ctrl or Shift, while smooth scrolling is on, starts or extends an animation (smooth_scroll.h).
 // A precision touchpad, a held mouse button (a drag), and a list that does not scroll go on to the list control.
 LRESULT PlaylistView::OnSmoothWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled) {
@@ -1383,9 +1527,11 @@ void PlaylistView::ApplyFonts() {
 }
 
 // The cover column is sized to fit the cover, so a new cover size also sets that column's width.
+// An open Preferences page takes what a panel changed (PanelSettingsChanged), so its Apply keeps it.
 void PlaylistView::ApplyViewSettings(const ViewSettings& settings) {
 	SaveViewSettings(settings);
 	ShowViewSettings(LoadViewSettings());
+	PanelSettingsChanged();
 }
 
 void PlaylistView::ShowViewSettings(const ViewSettings& settings) {
@@ -1396,6 +1542,7 @@ void PlaylistView::ShowViewSettings(const ViewSettings& settings) {
 		view->m_layout = view->CapturedLayout();
 		view->m_layout.coverWidth = static_cast<float>(view->m_settings.coverSize + 2 * kCoverInset);
 		view->ApplyFonts();
+		view->ApplyHeaderDragging();
 		view->RebuildColumns();
 		view->OnPlaylistContentChanged();
 		view->Invalidate();
@@ -1404,7 +1551,10 @@ void PlaylistView::ShowViewSettings(const ViewSettings& settings) {
 void PlaylistView::ApplyRatingStorage(RatingStorage storage) {
 	SetRatingStorage(storage);
 	for (PlaylistView* view : LiveViews()) {
-		if (view->m_hWnd) view->RebuildColumns();
+		if (!view->m_hWnd) continue;
+		// The widths and places the user dragged stay.
+		view->m_layout = view->CapturedLayout();
+		view->RebuildColumns();
 	}
 }
 

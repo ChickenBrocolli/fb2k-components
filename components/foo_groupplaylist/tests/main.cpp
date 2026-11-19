@@ -10,6 +10,8 @@ void RunUiTextTests();
 void RunSmoothScrollTests();
 void RunSettingsTests();
 void RunHeaderSortTests();
+void RunColumnFitTests();
+void RunColumnPlacesTests();
 
 int main() {
 	RunGroupModelTests();
@@ -22,6 +24,8 @@ int main() {
 	RunSmoothScrollTests();
 	RunSettingsTests();
 	RunHeaderSortTests();
+	RunColumnFitTests();
+	RunColumnPlacesTests();
 
 	if (FailureCount() == 0) {
 		std::printf("unit tests: all checks passed\n");

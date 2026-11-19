@@ -88,7 +88,7 @@ public:
 	enum { IDD = IDD_SCROLL_PAGE };
 
 	explicit ScrollingDialog(preferences_page_callback::ptr callback)
-		: m_callback(callback), m_values(SavedScrollValues()), m_shown(m_values) { s_open = this; }
+		: m_callback(callback), m_values(SavedScrollValues()), m_shown(m_values), m_lastSaved(m_values) { s_open = this; }
 	~ScrollingDialog() { if (s_open == this) s_open = nullptr; }
 
 	// The page while it exists, so a switch from the panel header menu or an import shows on it.
@@ -107,6 +107,7 @@ public:
 		SaveUserScrollPresets(m_values.userPresets);
 		PlaylistView::ApplyViewSettings(WithScrollValues(LoadViewSettings(), m_values));
 		m_shown = m_values;
+		m_lastSaved = SavedScrollValues();
 		m_callback->on_state_changed();
 	}
 
@@ -123,18 +124,40 @@ public:
 
 	// Settings were imported: the page drops its edits and shows the saved settings, which the panels show already.
 	void ReloadSaved() {
-		m_values = m_shown = SavedScrollValues();
+		m_values = m_shown = m_lastSaved = SavedScrollValues();
 		SetLiveInertiaParams(m_values.params);
 		if (m_hWnd) ShowValues();
 		m_callback->on_state_changed();
 	}
 
-	// The panel header menu saved a new smooth scrolling or pinning setting; the page takes it.
+	// The panel header menu saved a new smooth scrolling, pinning or scroll preset setting. The page takes what
+	// changed since it last looked, so a later Apply does not put the old setting back. A switch the page does not
+	// show (column dragging, say) changes none of them, so an edit on the page that was not applied yet stays.
 	void TakeMenuToggles() {
 		if (!m_hWnd) return;
-		const ViewSettings saved = LoadViewSettings();
-		m_values.smoothScroll = m_shown.smoothScroll = saved.smoothScroll;
-		m_values.pinHeaders = m_shown.pinHeaders = saved.pinHeaders;
+		const ScrollValues saved = SavedScrollValues();
+		bool taken = false;
+		if (saved.smoothScroll != m_lastSaved.smoothScroll) {
+			m_values.smoothScroll = saved.smoothScroll;
+			taken = true;
+		}
+		if (saved.pinHeaders != m_lastSaved.pinHeaders) {
+			m_values.pinHeaders = saved.pinHeaders;
+			taken = true;
+		}
+		if (!(saved.params == m_lastSaved.params) || saved.presetName != m_lastSaved.presetName) {
+			m_values.params = saved.params;
+			m_values.presetName = saved.presetName;
+			taken = true;
+		}
+		m_lastSaved = saved;
+		// The menu redrew the panels with the saved settings and may have set the scroll numbers. The panels show
+		// the page's own again, as before the menu was used.
+		SetLiveInertiaParams(m_values.params);
+		if (!SameViewPart(m_values, saved)) PlaylistView::ShowViewSettings(WithScrollValues(LoadViewSettings(), m_values));
+		m_shown.smoothScroll = m_values.smoothScroll;
+		m_shown.pinHeaders = m_values.pinHeaders;
+		if (!taken) return;
 		ShowValues();
 		m_callback->on_state_changed();
 	}
@@ -197,29 +220,49 @@ private:
 
 	std::vector<ScrollPreset> Presets() const { return AllScrollPresets(m_values.userPresets); }
 
+	bool IsCustom() const { return IsCustomScroll(Presets(), m_values.presetName, m_values.params); }
+
+	// Numbers that belong to no preset are listed last as "Custom (unsaved)", and the name box offers a free
+	// "Custom preset <number>" for them, unless a name was typed there already. An offered name that was not used goes again.
 	void FillPresets() {
 		CComboBox combo(GetDlgItem(IDC_SCROLL_PRESET));
 		combo.ResetContent();
 		const std::vector<ScrollPreset> presets = Presets();
 		for (const ScrollPreset& preset : presets) combo.AddString(ShownPresetName(preset.name).c_str());
-		const std::optional<size_t> selected = FindScrollPreset(presets, m_values.presetName);
-		combo.SetCurSel(selected ? static_cast<int>(*selected) : -1);
+		m_listedCustom = IsCustom();
+		if (m_listedCustom) {
+			combo.AddString(TrW("Custom (unsaved)").c_str());
+			combo.SetCurSel(static_cast<int>(presets.size()));
+		} else {
+			combo.SetCurSel(static_cast<int>(*FindScrollPreset(presets, m_values.presetName)));
+		}
+
+		CString typed;
+		GetDlgItemText(IDC_SCROLL_NEW_NAME, typed);
+		const bool offeredStill = !m_offeredName.empty() && std::wstring(typed) == m_offeredName;
+		if (m_listedCustom && (typed.IsEmpty() || offeredStill)) {
+			std::vector<std::string> shownBuiltIns;
+			for (const ScrollPreset& preset : BuiltInScrollPresets()) shownBuiltIns.push_back(Tr(preset.name.c_str()));
+			m_offeredName = pfc::stringcvt::string_wide_from_utf8(FreeScrollPresetName(Tr("Custom preset"), m_values.userPresets, shownBuiltIns).c_str()).get_ptr();
+			SetDlgItemText(IDC_SCROLL_NEW_NAME, m_offeredName.c_str());
+		} else if (!m_listedCustom && offeredStill) {
+			SetDlgItemText(IDC_SCROLL_NEW_NAME, L"");
+			m_offeredName.clear();
+		}
 	}
 
-	// The status line, the "changed" mark, and which controls can be used.
+	// Which controls can be used. Overwrite saves custom numbers into the user's preset they started from;
+	// Remove acts on the preset shown in the list, so it waits until a preset is shown there.
 	void ShowState() {
-		const std::vector<ScrollPreset> presets = Presets();
-		const std::optional<size_t> selected = FindScrollPreset(presets, m_values.presetName);
-		const bool changed = selected && !(presets[*selected].params == m_values.params);
-		const bool userPreset = selected && !IsBuiltInScrollPreset(m_values.presetName);
-		SetDlgItemText(IDC_SCROLL_MODIFIED, changed ? TrW("(changed)").c_str() : L"");
+		const bool custom = IsCustom();
+		const bool fromUserPreset = FindScrollPreset(m_values.userPresets, m_values.presetName).has_value();
 
 		const bool on = m_values.smoothScroll;
 
-		const int controls[] = { IDC_SCROLL_PRESET, IDC_SCROLL_NEW_NAME, IDC_SCROLL_SAVE_NEW, IDC_SCROLL_RESET, IDC_SCROLL_MODIFIED };
+		const int controls[] = { IDC_SCROLL_PRESET, IDC_SCROLL_NEW_NAME, IDC_SCROLL_SAVE_NEW, IDC_SCROLL_RESET };
 		for (const int id : controls) GetDlgItem(id).EnableWindow(on);
-		GetDlgItem(IDC_SCROLL_DELETE).EnableWindow(on && userPreset);
-		GetDlgItem(IDC_SCROLL_OVERWRITE).EnableWindow(on && userPreset && changed);
+		GetDlgItem(IDC_SCROLL_DELETE).EnableWindow(on && fromUserPreset && !custom);
+		GetDlgItem(IDC_SCROLL_OVERWRITE).EnableWindow(on && fromUserPreset && custom);
 		for (int i = 0; i < kSettingCount; ++i) {
 			GetDlgItem(IDC_SCROLL_SLIDER_0 + i).EnableWindow(on);
 			GetDlgItem(IDC_SCROLL_VALUE_0 + i).EnableWindow(on);
@@ -229,6 +272,7 @@ private:
 	// Every change shows in the panels at once. The panels are redrawn only when their settings changed.
 	void Changed() {
 		SetLiveInertiaParams(m_values.params);
+		if (IsCustom() != m_listedCustom) FillPresets();
 		if (!SameViewPart(m_shown, m_values)) {
 			PlaylistView::ShowViewSettings(WithScrollValues(LoadViewSettings(), m_values));
 			m_shown.smoothScroll = m_values.smoothScroll;
@@ -310,10 +354,11 @@ private:
 		const std::optional<size_t> index = FindScrollPreset(m_values.userPresets, m_values.presetName);
 		if (!index) return;
 		m_values.userPresets[*index].params = m_values.params;
+		FillPresets();
 		Changed();
 	}
 
-	// The numbers in use stay; the page then shows them against the default preset.
+	// The numbers in use stay. Unless they match the default preset, they are custom then.
 	void OnDelete(UINT, int, CWindow) {
 		const std::optional<size_t> index = FindScrollPreset(m_values.userPresets, m_values.presetName);
 		if (!index) return;
@@ -334,8 +379,13 @@ private:
 	ScrollValues m_values;
 	// The smooth scrolling and pinning the panels show now; only those fields are kept up to date.
 	ScrollValues m_shown;
+	// The settings as saved when the page last looked, so the page can tell what the header menu changed.
+	ScrollValues m_lastSaved;
 	// True while the page writes a number into a box, so that write is not read back as typing.
 	bool m_showing = false;
+	// Whether the preset list ends with "Custom (unsaved)", and the name the page offered for those numbers.
+	bool m_listedCustom = false;
+	std::wstring m_offeredName;
 	fb2k::CDarkModeHooks m_dark;
 	DialogTexts m_texts;
 };
@@ -355,6 +405,10 @@ preferences_page_factory_t<ScrollingPage> g_scrolling_page_factory;
 
 void ReloadScrollingPage() {
 	if (ScrollingDialog::s_open) ScrollingDialog::s_open->ReloadSaved();
+}
+
+void ShowScrollingPage() {
+	ui_control::get()->show_preferences(guid_scrolling_page);
 }
 
 void MenuTogglesChanged() {

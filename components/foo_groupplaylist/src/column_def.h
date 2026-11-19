@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "column_places.h"
 #include "tab_lines.h"
 
 // Column definitions and the rules for storing and naming them.
@@ -39,6 +40,8 @@ struct ColumnLayout {
 	float coverWidth = 106;
 	float infoWidth = 130;
 	std::vector<Column> columns;
+	// Where the cover and info columns sit on screen. They start at the left, as before they could be moved.
+	BlockColumnPlaces places;
 };
 
 // The built-in columns in menu order, one inner list per menu group:

@@ -61,6 +61,7 @@
 #define IDC_PREF_LANGUAGE           1223
 #define IDC_PREF_EXPORT             1224
 #define IDC_PREF_IMPORT             1225
+#define IDC_PREF_DRAG_COLUMNS       1226
 
 #define IDD_SCROLL_PAGE      104
 
@@ -79,7 +80,6 @@
 #define IDC_SCROLL_SMOOTH           1322
 #define IDC_SCROLL_PIN              1323
 #define IDC_SCROLL_PRESET           1324
-#define IDC_SCROLL_MODIFIED         1325
 #define IDC_SCROLL_DELETE           1326
 #define IDC_SCROLL_NEW_NAME         1327
 #define IDC_SCROLL_SAVE_NEW         1328

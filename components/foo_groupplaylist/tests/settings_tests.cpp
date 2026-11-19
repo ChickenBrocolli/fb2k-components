@@ -53,6 +53,27 @@ void ANewScrollPresetNeedsAFreeName() {
 	CHECK(CheckNewScrollPresetName("기본", user, shown) == ScrollPresetNameProblem::Taken);
 }
 
+// Numbers that match the preset last picked are that preset; any other numbers, or a preset that is gone, are custom.
+void NumbersApartFromTheirPresetAreCustom() {
+	const std::vector<ScrollPreset> presets = AllScrollPresets({ { "Mine", { 60.0, 1.0, 100.0, 0.3, 2.0 } } });
+	CHECK(!IsCustomScroll(presets, "Heavy", BuiltInScrollPresets()[2].params));
+	CHECK(!IsCustomScroll(presets, "Mine", { 60.0, 1.0, 100.0, 0.3, 2.0 }));
+	smooth_scroll::InertiaParams nudged = BuiltInScrollPresets()[2].params;
+	nudged.tauMs = 200.0;
+	CHECK(IsCustomScroll(presets, "Heavy", nudged));
+	// The numbers of Light are still custom while Heavy is the preset last picked.
+	CHECK(IsCustomScroll(presets, "Heavy", BuiltInScrollPresets()[1].params));
+	CHECK(IsCustomScroll(presets, "Removed", BuiltInScrollPresets()[0].params));
+}
+
+void TheOfferedNameIsTheFirstFreeNumber() {
+	const std::vector<std::string> shown = { "기본", "가볍게", "묵직하게" };
+	CHECK(FreeScrollPresetName("Custom", {}, shown) == "Custom 1");
+	const std::vector<ScrollPreset> user = { { "Custom 1", {} }, { "Custom 3", {} } };
+	CHECK(FreeScrollPresetName("Custom", user, shown) == "Custom 2");
+	CHECK(FreeScrollPresetName("사용자 정의", user, shown) == "사용자 정의 1");
+}
+
 void NumbersAreWrittenWithoutTrailingZeros() {
 	CHECK(FormatSettingNumber(90.0) == "90");
 	CHECK(FormatSettingNumber(1.5) == "1.5");
@@ -115,6 +136,8 @@ void RunSettingsTests() {
 	UserScrollPresetsSurviveTheirTextForm();
 	BrokenScrollPresetLinesAreSkippedAndNumbersPulledIn();
 	ANewScrollPresetNeedsAFreeName();
+	NumbersApartFromTheirPresetAreCustom();
+	TheOfferedNameIsTheFirstFreeNumber();
 	NumbersAreWrittenWithoutTrailingZeros();
 	ASettingsFileReadsBackWhatWasWritten();
 	ASettingsFileEditedInNotepadStillReads();

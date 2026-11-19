@@ -42,6 +42,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="column_def_tests.cpp" />
+    <ClCompile Include="column_fit_tests.cpp" />
+    <ClCompile Include="column_places_tests.cpp" />
     <ClCompile Include="group_model_tests.cpp" />
     <ClCompile Include="group_preset_tests.cpp" />
     <ClCompile Include="header_sort_tests.cpp" />

@@ -27,6 +27,9 @@ struct ViewSettings {
 	bool presetPerPlaylist = false;
 	bool dimBrackets = true;
 	bool sortOnHeaderClick = true;
+	// On by default: column titles drag to reorder the columns. Off locks the order once the user likes it,
+	// as foobar2000 locks its layout outside layout editing mode. Widths can still be dragged.
+	bool dragColumns = true;
 	bool scrollPerPlaylist = true;
 	// Off by default: the default layout has a Playing column, which already marks the playing track.
 	bool boldPlaying = false;

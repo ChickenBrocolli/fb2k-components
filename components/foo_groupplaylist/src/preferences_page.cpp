@@ -29,7 +29,7 @@ struct PageValues {
 			a.headerColor == b.headerColor && a.labelColor == b.labelColor &&
 			a.rowPadding == b.rowPadding && a.coverSize == b.coverSize &&
 			a.presetPerPlaylist == b.presetPerPlaylist && a.dimBrackets == b.dimBrackets &&
-			a.sortOnHeaderClick == b.sortOnHeaderClick && a.scrollPerPlaylist == b.scrollPerPlaylist &&
+			a.sortOnHeaderClick == b.sortOnHeaderClick && a.dragColumns == b.dragColumns && a.scrollPerPlaylist == b.scrollPerPlaylist &&
 			a.boldPlaying == b.boldPlaying;
 	}
 };
@@ -57,7 +57,36 @@ class PreferencesDialog : public CDialogImpl<PreferencesDialog>, public preferen
 public:
 	enum { IDD = IDD_PREFERENCES };
 
-	explicit PreferencesDialog(preferences_page_callback::ptr callback) : m_callback(callback), m_values(SavedValues()) {}
+	explicit PreferencesDialog(preferences_page_callback::ptr callback)
+		: m_callback(callback), m_values(SavedValues()), m_savedCoverSize(m_values.view.coverSize), m_savedDragColumns(m_values.view.dragColumns) {
+		s_open = this;
+	}
+	~PreferencesDialog() { if (s_open == this) s_open = nullptr; }
+
+	// The page while it exists, so a change made in a panel shows on it. foobar2000 keeps a page that was shown
+	// until Preferences closes.
+	static PreferencesDialog* s_open;
+
+	// A panel saved a new cover size (Ctrl+wheel, dragging the cover column) or column dragging (the header menu).
+	// The page takes what changed since it last looked, so Apply does not put the old value back. A setting saved
+	// elsewhere (header pinning, say) changes neither, so an edit on the page that was not applied yet stays.
+	void TakePanelChanges() {
+		const ViewSettings saved = LoadViewSettings();
+		bool taken = false;
+		if (saved.coverSize != m_savedCoverSize) {
+			m_values.view.coverSize = saved.coverSize;
+			taken = true;
+		}
+		if (saved.dragColumns != m_savedDragColumns) {
+			m_values.view.dragColumns = saved.dragColumns;
+			taken = true;
+		}
+		m_savedCoverSize = saved.coverSize;
+		m_savedDragColumns = saved.dragColumns;
+		if (!taken) return;
+		if (m_hWnd) ShowValues();
+		m_callback->on_state_changed();
+	}
 
 	t_uint32 get_state() override {
 		t_uint32 state = preferences_state::resettable | preferences_state::dark_mode_supported;
@@ -97,6 +126,7 @@ public:
 		COMMAND_ID_HANDLER_EX(IDC_PREF_PRESET_PER_LIST, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_DIM_BRACKETS, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SORT_ON_CLICK, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_DRAG_COLUMNS, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SCROLL_PER_LIST, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_BOLD_PLAYING, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_TRACK_FONT_BUTTON, OnChooseFont)
@@ -154,6 +184,7 @@ private:
 		CheckDlgButton(IDC_PREF_PRESET_PER_LIST, view.presetPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_DIM_BRACKETS, view.dimBrackets ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_SORT_ON_CLICK, view.sortOnHeaderClick ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_DRAG_COLUMNS, view.dragColumns ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_SCROLL_PER_LIST, view.scrollPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_BOLD_PLAYING, view.boldPlaying ? BST_CHECKED : BST_UNCHECKED);
 		// The spin buttons own the number in their edit box, so the number is set through them.
@@ -191,6 +222,7 @@ private:
 		case IDC_PREF_PRESET_PER_LIST: view.presetPerPlaylist = checked; break;
 		case IDC_PREF_DIM_BRACKETS: view.dimBrackets = checked; break;
 		case IDC_PREF_SORT_ON_CLICK: view.sortOnHeaderClick = checked; break;
+		case IDC_PREF_DRAG_COLUMNS: view.dragColumns = checked; break;
 		case IDC_PREF_SCROLL_PER_LIST: view.scrollPerPlaylist = checked; break;
 		case IDC_PREF_BOLD_PLAYING: view.boldPlaying = checked; break;
 		}
@@ -296,6 +328,9 @@ private:
 
 	const preferences_page_callback::ptr m_callback;
 	PageValues m_values;
+	// The cover size and column dragging as saved when the page last looked (TakePanelChanges).
+	int m_savedCoverSize;
+	bool m_savedDragColumns;
 	// True while the page or a spin button writes a number into an edit box, so that write is not read back as an edit.
 	// It starts true because the spin buttons write to their edit boxes while the dialog is being created.
 	bool m_showing = true;
@@ -313,5 +348,11 @@ public:
 
 preferences_page_factory_t<PreferencesPage> g_preferences_page_factory;
 
+PreferencesDialog* PreferencesDialog::s_open = nullptr;
+
 } // namespace
+
+void PanelSettingsChanged() {
+	if (PreferencesDialog::s_open) PreferencesDialog::s_open->TakePanelChanges();
+}
 

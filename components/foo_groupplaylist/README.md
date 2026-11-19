@@ -67,7 +67,9 @@ Right-click a **column title** to open the panel menu:
 |---|---|
 | **Columns** | Tick the columns to show. **Edit...** opens the Columns preferences page. |
 | **Groups** | Choose how this playlist is grouped. **None** shows a plain track list. **Sort playlist by this preset** sorts the playlist in the preset's order. **Edit...** opens the Groups preferences page. |
-| **Smooth scrolling** | The mouse wheel glides to a stop instead of jumping line by line. On by default. A precision touchpad scrolls as usual. |
+| **Smooth scrolling** | The mouse wheel glides to a stop instead of jumping line by line. On by default. A precision touchpad scrolls as usual. Pick how it feels, **Default**, **Light**, **Heavy** or one of your own presets, and it takes effect at the next turn of the wheel; **Off** turns it off. Numbers you changed on the Scrolling page without saving them as a preset show as **Custom (unsaved)**; picking a preset leaves them behind. **Edit...** opens the Scrolling preferences page. |
+| **Auto-size columns** | The columns fill the panel, so there is no horizontal scroll bar. They keep their proportions when the panel is resized, beside the cover and info columns, which keep their width. Dragging a column's edge moves only the border with the next column. Each panel has its own setting. It is on in a new panel; a panel set up with 0.9.0 keeps it off. |
+| **Drag to reorder columns** | Drag column titles, the empty ones above the covers and the album text too, to put the columns in another order. Turn it off once you like the order, so a click or a resize cannot move a column by accident; widths can still be dragged. On by default. Also on the preferences page. |
 | **Pin group headers** | Keeps the header of the group at the top of the panel while you scroll through it. |
 
 Other things you can do in the panel:
@@ -77,7 +79,8 @@ Other things you can do in the panel:
 - Double-click a group header to play the group.
 - Drag a group header or a disc label to move the whole group or disc. A group goes only between groups, a disc only between discs.
 - Click a column title to sort the playlist by that column, and click again to reverse. Click the empty title above the covers, or pick a preset under **Groups** right after such a sort, to return to the preset's order. **Edit > Undo** (Ctrl+Z) undoes a sort.
-- Hold **Ctrl** and turn the mouse wheel to make the album art larger or smaller.
+- Hold **Ctrl** and turn the mouse wheel to make the album art larger or smaller, or drag the right edge of the empty title above the covers.
+- Drag the empty title above the covers, or the one above the album text beside them, to move that column anywhere among the other columns, for example the covers to the right end. Each panel keeps its own order.
 - On the playing track, click the **Duration** cell to switch between the time played and the time left.
 
 ## Settings
@@ -88,14 +91,14 @@ Open **File > Preferences > Tools > GroupPlaylist**.
 - **Colours and sizes**: colour of the group header text and of the labels, extra row height, album art size.
 - **Rating**: where a click on the stars saves the rating: **File tags**, **Playback Statistics**, or **Both**. The last two need the separate Playback Statistics component (`foo_playcount`). Without it they are greyed out and marked "(needs Playback Statistics)".
 - **Language**: **Automatic** follows the Windows display language (Korean on Korean Windows, English otherwise). **English** and **한국어** choose one. After **Apply** the panel and the page change at once. Reopen Preferences to see the page names in the new language.
-- **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, dim text in brackets such as `(Remastered)`, and show the playing track in bold.
+- **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, drag column titles to reorder the columns, dim text in brackets such as `(Remastered)`, and show the playing track in bold.
 - **Settings file**: **Export settings...** saves every GroupPlaylist setting to a text file, and **Import settings...** loads one, for a backup or another computer. Per-playlist presets and scroll positions, ratings, and each panel's column layout are not in the file.
 
 Three pages sit below it:
 
 - **Columns**: the built-in columns (locked, but you can choose which appear in the menu or duplicate one to change the copy) and your own columns. A column's text is a [title formatting](https://wiki.hydrogenaud.io/index.php?title=Foobar2000:Title_Formatting_Reference) pattern. **Insert field** adds common fields, and the preview shows the result for the focused track.
 - **Groups**: the presets. Each preset has a pattern for the group header, for the cover (tracks with the same value share one cover), for the labels inside a group (one per line), and for its sort order.
-- **Scrolling**: pinned group headers and smooth scrolling (the same switches as in the panel menu), and how the wheel glides: **Default**, **Light** (stops at once, hardly speeds up), **Heavy** (glides long, speeds up a lot when you spin the wheel), or your own sets, made from five numbers. A change shows at once while you scroll; **Apply** keeps it.
+- **Scrolling**: pinned group headers and smooth scrolling (the same switches as in the panel menu), and how the wheel glides: **Default**, **Light** (stops at once, hardly speeds up), **Heavy** (glides long, speeds up a lot when you spin the wheel), or your own sets, made from five numbers. A change shows at once while you scroll; **Apply** keeps it. Once you change a number, the preset list shows **Custom (unsaved)** and offers an unused name such as "Custom preset 1"; **Save as new** keeps the numbers as a preset of their own, and **Overwrite** saves them into your preset they started from.
 
 ## Known limitations
 

@@ -35,13 +35,17 @@ public:
 
 	// The saved settings of one panel. Version 1 holds the name of the active group preset.
 	// Version 2 adds the column layout. Version 3 adds whether the panel shows no groups ("None").
-	// A panel never configured has no data and keeps the defaults.
+	// Version 4 adds whether the columns fill the panel ("Auto-size columns").
+	// Version 5 adds where the cover and info columns sit, which the user can drag them to.
+	// A panel never configured has no data and keeps the defaults, so a new panel fits its columns to its width.
+	// A panel saved before version 4 keeps the widths its user set, so it starts with that off.
 	void set_configuration(ui_element_config::ptr config) override {
 		try {
 			::ui_element_config_parser parser(config);
 			t_uint32 version = 0;
 			parser >> version;
 			if (version < 1 || version > kConfigVersion) return;
+			if (version < 4) SetAutoSizeColumns(false);
 			pfc::string8 presetName;
 			parser >> presetName;
 			SelectPresetByName(presetName);
@@ -62,6 +66,18 @@ public:
 			t_uint8 ungrouped = 0;
 			parser >> ungrouped;
 			if (ungrouped != 0) SetUngrouped();
+			if (version < 4) return;
+
+			t_uint8 autoSize = 0;
+			parser >> autoSize;
+			SetAutoSizeColumns(autoSize != 0);
+			if (version < 5) return;
+
+			t_uint32 coverPlace = 0, infoPlace = 1;
+			parser >> coverPlace >> infoPlace;
+			ColumnLayout placed = GetColumnLayout();
+			placed.places = { coverPlace, infoPlace };
+			SetColumnLayout(placed);
 		} catch (exception_io_data const&) {
 		}
 	}
@@ -79,6 +95,8 @@ public:
 			builder << column.width;
 		}
 		builder << static_cast<t_uint8>(IsUngrouped() ? 1 : 0);
+		builder << static_cast<t_uint8>(IsAutoSizeColumns() ? 1 : 0);
+		builder << static_cast<t_uint32>(layout.places.cover) << static_cast<t_uint32>(layout.places.info);
 		return builder.finish(g_get_guid());
 	}
 
@@ -131,7 +149,9 @@ private:
 
 	void RunHeaderMenu(CPoint screenPoint) {
 		enum : UINT { kFirstPresetCommand = 1, kFirstColumnCommand = 1000, kCustomColumnsCommand = 5000, kEditPresetsCommand = 5001,
-			kSmoothScrollCommand = 5002, kPinHeadersCommand = 5003, kSortByPresetCommand = 5005, kNoGroupingCommand = 5006 };
+			kSmoothScrollOffCommand = 5002, kPinHeadersCommand = 5003, kSortByPresetCommand = 5005, kNoGroupingCommand = 5006, kAutoSizeCommand = 5007,
+			kEditScrollingCommand = 5008, kCustomScrollCommand = 5009, kDragColumnsCommand = 5010,
+			kFirstScrollPresetCommand = 6000 };
 		const auto wide = [](const std::string& text) { return pfc::stringcvt::string_os_from_utf8(text.c_str()); };
 
 		// ColumnDefs() lists the built-in groups in order and then the custom columns.
@@ -179,16 +199,42 @@ private:
 		groups.AppendMenu(MF_STRING | (IsUngrouped() ? MF_GRAYED : 0), kSortByPresetCommand, TrW("Sort playlist by this preset").c_str());
 		groups.AppendMenu(MF_STRING, kEditPresetsCommand, TrW("Edit...").c_str());
 
+		// The feel of smooth scrolling is best judged by trying it, so its presets switch here, next to Off.
+		// Numbers changed on the Scrolling page belong to no preset: they are listed last, as "Custom (unsaved)",
+		// so it shows that picking a preset leaves them behind.
+		const ViewSettings settings = LoadViewSettings();
+		const std::vector<ScrollPreset> scrollPresets = AllScrollPresets(LoadUserScrollPresets());
+		const bool customScroll = IsCustomScroll(scrollPresets, LoadScrollPresetName(), LoadInertiaParams());
+		const std::optional<size_t> scrollPreset = settings.smoothScroll && !customScroll ? FindScrollPreset(scrollPresets, LoadScrollPresetName()) : std::nullopt;
+		const size_t builtInCount = BuiltInScrollPresets().size();
+		CMenu scrolling;
+		scrolling.CreatePopupMenu();
+		scrolling.AppendMenu(MF_STRING | (settings.smoothScroll ? 0 : MF_CHECKED), kSmoothScrollOffCommand, TrW("Off").c_str());
+		scrolling.AppendMenu(MF_SEPARATOR);
+		for (size_t index = 0; index < scrollPresets.size(); ++index) {
+			if (index == builtInCount) scrolling.AppendMenu(MF_SEPARATOR);
+			const ScrollPreset& preset = scrollPresets[index];
+			const std::string name = index < builtInCount ? Tr(preset.name.c_str()) : preset.name;
+			scrolling.AppendMenu(MF_STRING | (scrollPreset == index ? MF_CHECKED : 0), kFirstScrollPresetCommand + static_cast<UINT>(index), wide(name));
+		}
+		if (customScroll) {
+			scrolling.AppendMenu(MF_SEPARATOR);
+			scrolling.AppendMenu(MF_STRING | (settings.smoothScroll ? MF_CHECKED : 0), kCustomScrollCommand, TrW("Custom (unsaved)").c_str());
+		}
+		scrolling.AppendMenu(MF_SEPARATOR);
+		scrolling.AppendMenu(MF_STRING, kEditScrollingCommand, TrW("Edit...").c_str());
+
 		CMenu menu;
 		menu.CreatePopupMenu();
 		menu.AppendMenu(MF_POPUP, columns.Detach(), TrW("Columns").c_str());
 		menu.AppendMenu(MF_POPUP, groups.Detach(), TrW("Groups").c_str());
+		menu.AppendMenu(MF_POPUP, scrolling.Detach(), TrW("Smooth scrolling").c_str());
 
-		// Settings whose effect is best judged by trying them, so they switch here in one click.
-		// Everything else is on the Preferences page.
-		const ViewSettings settings = LoadViewSettings();
+		// Switches that take one click. Everything else is on the Preferences page.
+		// Auto-size columns belongs to this panel, like its columns, as in the Default UI playlist's header menu.
 		menu.AppendMenu(MF_SEPARATOR);
-		menu.AppendMenu(MF_STRING | (settings.smoothScroll ? MF_CHECKED : 0), kSmoothScrollCommand, TrW("Smooth scrolling").c_str());
+		menu.AppendMenu(MF_STRING | (IsAutoSizeColumns() ? MF_CHECKED : 0), kAutoSizeCommand, TrW("Auto-size columns").c_str());
+		menu.AppendMenu(MF_STRING | (settings.dragColumns ? MF_CHECKED : 0), kDragColumnsCommand, TrW("Drag to reorder columns").c_str());
 		menu.AppendMenu(MF_STRING | (settings.pinHeaders ? MF_CHECKED : 0), kPinHeadersCommand, TrW("Pin group headers").c_str());
 		const UINT command = static_cast<UINT>(menu.TrackPopupMenu(TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, screenPoint.x, screenPoint.y, m_hWnd));
 		if (command == kCustomColumnsCommand) {
@@ -199,12 +245,27 @@ private:
 			ShowGroupsPage(Presets()[ActivePreset()].name);
 		} else if (command == kNoGroupingCommand) {
 			ChooseUngrouped();
-		} else if (command == kSmoothScrollCommand || command == kPinHeadersCommand) {
+		} else if (command == kAutoSizeCommand) {
+			SetAutoSizeColumns(!IsAutoSizeColumns());
+		} else if (command == kEditScrollingCommand) {
+			ShowScrollingPage();
+		} else if (command == kCustomScrollCommand) {
+			// The custom numbers stay; only smooth scrolling comes back on, if it was off.
+			if (!settings.smoothScroll) {
+				ViewSettings changed = settings;
+				changed.smoothScroll = true;
+				ApplyViewSettings(changed);
+				MenuTogglesChanged();
+			}
+		} else if (command == kSmoothScrollOffCommand || command == kPinHeadersCommand || command == kDragColumnsCommand) {
 			ViewSettings changed = settings;
-			if (command == kSmoothScrollCommand) changed.smoothScroll = !changed.smoothScroll;
-			else changed.pinHeaders = !changed.pinHeaders;
+			if (command == kSmoothScrollOffCommand) changed.smoothScroll = false;
+			else if (command == kPinHeadersCommand) changed.pinHeaders = !changed.pinHeaders;
+			else changed.dragColumns = !changed.dragColumns;
 			ApplyViewSettings(changed);
 			MenuTogglesChanged();
+		} else if (command >= kFirstScrollPresetCommand) {
+			PickScrollPreset(scrollPresets[command - kFirstScrollPresetCommand], settings);
 		} else if (command >= kFirstColumnCommand) {
 			ToggleColumn(defs[command - kFirstColumnCommand].name);
 		} else if (command >= kFirstPresetCommand) {
@@ -212,7 +273,21 @@ private:
 		}
 	}
 
-	static constexpr t_uint32 kConfigVersion = 3;
+	// A preset picked in the header menu is saved and used at once, as one picked on the Scrolling page and applied.
+	// Picking one also turns smooth scrolling on.
+	static void PickScrollPreset(const ScrollPreset& preset, const ViewSettings& settings) {
+		SaveInertiaParams(preset.params);
+		SaveScrollPresetName(preset.name);
+		SetLiveInertiaParams(preset.params);
+		if (!settings.smoothScroll) {
+			ViewSettings changed = settings;
+			changed.smoothScroll = true;
+			ApplyViewSettings(changed);
+		}
+		MenuTogglesChanged();
+	}
+
+	static constexpr t_uint32 kConfigVersion = 5;
 };
 
 class GroupViewElement : public ui_element_impl<GroupViewWindow> {};

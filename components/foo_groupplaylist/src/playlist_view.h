@@ -68,6 +68,10 @@ public:
 	// Reads the widths the user dragged, so call it when saving.
 	ColumnLayout GetColumnLayout();
 	void SetColumnLayout(const ColumnLayout& layout);
+	// "Auto-size columns": the track columns fill the panel beside the cover and info columns,
+	// in the proportions of their saved widths. On for a new panel; a panel saved before it existed keeps it off.
+	bool IsAutoSizeColumns() const { return m_autoSizeColumns; }
+	void SetAutoSizeColumns(bool on);
 	// Saves the shared custom columns and updates every panel. renames pairs an old name with its new name.
 	static void ApplyCustomColumns(const std::vector<ColumnDef>& customDefs, const std::vector<std::pair<std::string, std::string>>& renames);
 
@@ -93,6 +97,10 @@ public:
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnStarMouseMove)
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnSmoothWheel)
 		MESSAGE_HANDLER(kSmoothScrollMessage, OnSmoothScrollFrame)
+		NOTIFY_CODE_HANDLER(HDN_ITEMCHANGING, OnHeaderItemChanging)
+		NOTIFY_CODE_HANDLER(HDN_ENDTRACK, OnHeaderEndTrack)
+		NOTIFY_CODE_HANDLER(HDN_DIVIDERDBLCLICK, OnHeaderDividerDoubleClick)
+		MESSAGE_HANDLER(kColumnDragEndedMessage, OnColumnDragEnded)
 		MESSAGE_HANDLER(WM_TIMER, OnSmoothScrollTimer)
 		CHAIN_MSG_MAP(CListControlWithSelectionBase)
 	END_MSG_MAP()
@@ -122,9 +130,9 @@ protected:
 	void RenderOverlay2(const CRect& updateRect, CDCHandle dc) override;
 	void OnViewOriginChange(CPoint delta) override;
 	void EnsureVisibleRectAbs(const CRect& rect) override;
-	bool OnColumnHeaderDrag(t_size listColumn, t_size newPosition) override;
 	bool GetTooltipData(CPoint pointAbs, pfc::string_base& text, CRect& rect, CFontHandle& font) const override;
 	void OnColumnHeaderClick(t_size listColumn) override;
+	bool OnColumnHeaderDrag(t_size listColumn, t_size newPosition) override;
 
 	t_size GetFocusItem() const override;
 	void SetFocusItem(t_size index) override;
@@ -210,6 +218,15 @@ private:
 	std::optional<size_t> LabelLevelAtPoint(CPoint clientPoint, size_t& item) const;
 	size_t DropIndexAt(CPoint clientPoint, DragUnit unit, size_t level) const;
 	LRESULT OnCoverWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled);
+	LRESULT OnHeaderItemChanging(int, LPNMHDR header, BOOL& handled);
+	LRESULT OnHeaderEndTrack(int, LPNMHDR header, BOOL& handled);
+	LRESULT OnHeaderDividerDoubleClick(int, LPNMHDR header, BOOL& handled);
+	LRESULT OnColumnDragEnded(UINT, WPARAM column, LPARAM, BOOL&);
+	void ApplyCoverColumnWidth();
+	std::vector<size_t> TrackColumnsOnScreen() const;
+	void SaveTrackColumnWeights();
+	void FitTrackColumns();
+	void ApplyHeaderDragging();
 	HFONT HeaderFont() const;
 	std::string AlbumSummary(size_t baseItem) const;
 	bool IsPlayingItem(size_t item) const;
@@ -260,6 +277,9 @@ private:
 	std::vector<GroupPreset> m_presets;
 	size_t m_activePreset = 0;
 	bool m_ungrouped = false;
+	bool m_autoSizeColumns = true;
+	// True while this view sets column widths itself, so the header's notices of them are not taken for a drag.
+	bool m_fittingColumns = false;
 	titleformat_object::ptr m_albumScript;
 	titleformat_object::ptr m_blockScript;
 	std::vector<titleformat_object::ptr> m_subgroupScripts;
@@ -287,6 +307,9 @@ private:
 	// Smooth wheel scrolling (smooth_scroll.h). The helper is made on the first animated wheel turn.
 	static constexpr UINT kSmoothScrollMessage = WM_APP + 42;
 	static constexpr UINT_PTR kSmoothScrollTimer = 0x47504c53;
+	// Posted when the user lets go of a column divider, with the column in wParam,
+	// so the columns are rebuilt or refitted after the header is done with the drag.
+	static constexpr UINT kColumnDragEndedMessage = WM_APP + 43;
 	std::optional<SmoothScrollHelper> m_smoothScroll;
 	// True while the helper moves the view, so that move does not end the animation.
 	bool m_animatingWheel = false;

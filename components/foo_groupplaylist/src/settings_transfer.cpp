@@ -118,6 +118,7 @@ std::string ExportSettingsText() {
 	out.AddBool("presetPerPlaylist", view.presetPerPlaylist);
 	out.AddBool("scrollPerPlaylist", view.scrollPerPlaylist);
 	out.AddBool("sortOnHeaderClick", view.sortOnHeaderClick);
+	out.AddBool("dragColumns", view.dragColumns);
 	out.AddBool("dimBrackets", view.dimBrackets);
 	out.AddBool("boldPlaying", view.boldPlaying);
 	out.AddBool("durationCountsDown", GetDurationCountsDown());
@@ -164,6 +165,7 @@ bool ImportSettingsText(const std::string& text) {
 	in.Bool("presetPerPlaylist", view.presetPerPlaylist);
 	in.Bool("scrollPerPlaylist", view.scrollPerPlaylist);
 	in.Bool("sortOnHeaderClick", view.sortOnHeaderClick);
+	in.Bool("dragColumns", view.dragColumns);
 	in.Bool("dimBrackets", view.dimBrackets);
 	in.Bool("boldPlaying", view.boldPlaying);
 	in.Bool("pinHeaders", view.pinHeaders);
