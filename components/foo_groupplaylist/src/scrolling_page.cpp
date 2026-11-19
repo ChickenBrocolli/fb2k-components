@@ -11,6 +11,7 @@
 #include "resource.h"
 #include "ui_language.h"
 #include "view_settings.h"
+#include "view_settings_fields.h"
 
 // Preferences > Tools > GroupPlaylist > Scrolling: header pinning, smooth scrolling, and its numbers and presets.
 // A change shows in every panel at once (ShowPreferencesPreview, SetLiveInertiaParams), so it can be felt with the
@@ -24,29 +25,29 @@ static_assert(IDC_SCROLL_VALUE_0 + kSettingCount - 1 == IDC_SCROLL_VALUE_4);
 
 // Everything the page edits.
 struct ScrollValues {
-	bool smoothScroll = false;
-	bool pinHeaders = false;
+	ViewSettings view;  // only its SettingsPage::Scrolling part counts
 	smooth_scroll::InertiaParams params;
 	std::string presetName;
 	std::vector<ScrollPreset> userPresets;
 
-	bool operator==(const ScrollValues&) const = default;
+	bool operator==(const ScrollValues& other) const {
+		return SameSettings(view, other.view, SettingsPage::Scrolling) && params == other.params && presetName == other.presetName &&
+			userPresets == other.userPresets;
+	}
 };
 
 ScrollValues SavedScrollValues() {
-	const ViewSettings view = LoadViewSettings();
-	return { view.smoothScroll, view.pinHeaders, LoadInertiaParams(), LoadScrollPresetName(), LoadUserScrollPresets() };
+	return { LoadViewSettings(), LoadInertiaParams(), LoadScrollPresetName(), LoadUserScrollPresets() };
 }
 
 // The view settings with the page's part replaced.
 ViewSettings WithScrollValues(ViewSettings view, const ScrollValues& values) {
-	view.smoothScroll = values.smoothScroll;
-	view.pinHeaders = values.pinHeaders;
+	CopySettings(values.view, view, SettingsPage::Scrolling);
 	return view;
 }
 
 bool SameViewPart(const ScrollValues& a, const ScrollValues& b) {
-	return a.smoothScroll == b.smoothScroll && a.pinHeaders == b.pinHeaders;
+	return SameSettings(a.view, b.view, SettingsPage::Scrolling);
 }
 
 // A preset name as shown: built-in presets in the current language, the user's as typed.
@@ -115,9 +116,7 @@ public:
 
 	// The page's defaults. The user's presets stay.
 	void reset() override {
-		const ViewSettings defaults = DefaultViewSettings();
-		m_values.smoothScroll = defaults.smoothScroll;
-		m_values.pinHeaders = defaults.pinHeaders;
+		CopySettings(DefaultViewSettings(), m_values.view, SettingsPage::Scrolling);
 		m_values.params = BuiltInScrollPresets()[0].params;
 		m_values.presetName = kDefaultScrollPresetName;
 		ShowValues();
@@ -138,15 +137,7 @@ public:
 	void TakeMenuToggles() {
 		if (!m_hWnd) return;
 		const ScrollValues saved = SavedScrollValues();
-		bool taken = false;
-		if (saved.smoothScroll != m_lastSaved.smoothScroll) {
-			m_values.smoothScroll = saved.smoothScroll;
-			taken = true;
-		}
-		if (saved.pinHeaders != m_lastSaved.pinHeaders) {
-			m_values.pinHeaders = saved.pinHeaders;
-			taken = true;
-		}
+		bool taken = TakeChangedSettings(saved.view, m_lastSaved.view, m_values.view, SettingsPage::Scrolling);
 		if (!(saved.params == m_lastSaved.params) || saved.presetName != m_lastSaved.presetName) {
 			m_values.params = saved.params;
 			m_values.presetName = saved.presetName;
@@ -156,8 +147,7 @@ public:
 		// The menu may have set the scroll numbers. The panels scroll with the page's own again, as before the menu
 		// was used, and ApplyViewSettings shows the page's smooth scrolling and pinning after this.
 		SetLiveInertiaParams(m_values.params);
-		m_shown.smoothScroll = m_values.smoothScroll;
-		m_shown.pinHeaders = m_values.pinHeaders;
+		CopySettings(m_values.view, m_shown.view, SettingsPage::Scrolling);
 		if (!taken) return;
 		ShowValues();
 		m_callback->on_state_changed();
@@ -203,8 +193,8 @@ private:
 	}
 
 	void ShowValues() {
-		CheckDlgButton(IDC_SCROLL_SMOOTH, m_values.smoothScroll ? BST_CHECKED : BST_UNCHECKED);
-		CheckDlgButton(IDC_SCROLL_PIN, m_values.pinHeaders ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_SCROLL_SMOOTH, m_values.view.smoothScroll ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_SCROLL_PIN, m_values.view.pinHeaders ? BST_CHECKED : BST_UNCHECKED);
 		for (int i = 0; i < kSettingCount; ++i) {
 			CTrackBarCtrl(GetDlgItem(IDC_SCROLL_SLIDER_0 + i)).SetPos(SliderPosition(kInertiaSettings[i], m_values.params.*kInertiaSettings[i].field));
 			ShowNumber(i);
@@ -259,7 +249,7 @@ private:
 		const bool custom = IsCustom();
 		const bool fromUserPreset = FindScrollPreset(m_values.userPresets, m_values.presetName).has_value();
 
-		const bool on = m_values.smoothScroll;
+		const bool on = m_values.view.smoothScroll;
 
 		const int controls[] = { IDC_SCROLL_PRESET, IDC_SCROLL_NEW_NAME, IDC_SCROLL_SAVE_NEW, IDC_SCROLL_RESET };
 		for (const int id : controls) GetDlgItem(id).EnableWindow(on);
@@ -277,8 +267,7 @@ private:
 		if (IsCustom() != m_listedCustom) FillPresets();
 		if (!SameViewPart(m_shown, m_values)) {
 			ShowPreferencesPreview();
-			m_shown.smoothScroll = m_values.smoothScroll;
-			m_shown.pinHeaders = m_values.pinHeaders;
+			CopySettings(m_values.view, m_shown.view, SettingsPage::Scrolling);
 		}
 		ShowState();
 		m_callback->on_state_changed();
@@ -286,8 +275,8 @@ private:
 
 	void OnCheckChanged(UINT, int id, CWindow) {
 		const bool checked = IsDlgButtonChecked(id) == BST_CHECKED;
-		if (id == IDC_SCROLL_SMOOTH) m_values.smoothScroll = checked;
-		else m_values.pinHeaders = checked;
+		if (id == IDC_SCROLL_SMOOTH) m_values.view.smoothScroll = checked;
+		else m_values.view.pinHeaders = checked;
 		Changed();
 	}
 

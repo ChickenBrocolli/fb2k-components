@@ -1,6 +1,7 @@
 GroupPlaylist uses the following third-party software. The foobar2000 SDK
 and WTL are compiled into foo_groupplaylist.dll; neither is modified.
-The smooth scrolling code is adapted from ui_helpers (see the end of this file).
+The smooth scrolling and DirectWrite text drawing code is adapted from ui_helpers
+(see the end of this file).
 
 
 ================================================================================
@@ -102,10 +103,10 @@ non-infringement.
 
 
 ================================================================================
-ui_helpers (smooth scrolling)
+ui_helpers (smooth scrolling, DirectWrite text drawing)
 https://github.com/reupen/ui_helpers
-Adapted in components/foo_groupplaylist/src/smooth_scroll.h, smooth_scroll.cpp
-and smooth_scroll_math.h.
+Adapted in components/foo_groupplaylist/src/smooth_scroll.h, smooth_scroll.cpp,
+smooth_scroll_math.h, text_painter.cpp and emoji_table.cpp (Unicode emoji data).
 ================================================================================
 
 Copyright (c) Reupen Shah 2003-2017

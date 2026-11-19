@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repo 'components\foo_groupplaylist\src\foo_groupplaylist.vcxproj'
-$foobarDir = Join-Path $repo 'foobar2000_x64'
+$foobarDir = Join-Path $repo 'foobar2000_x64_test'
 $foobarExe = Join-Path $foobarDir 'foobar2000.exe'
 $componentDir = Join-Path $foobarDir 'profile\user-components-x64\foo_groupplaylist'
 $builtDll = Join-Path $repo "build\$Configuration\foo_groupplaylist.dll"

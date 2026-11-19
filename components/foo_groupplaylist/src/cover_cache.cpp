@@ -4,7 +4,7 @@
 
 #include <SDK/album_art.h>
 #include <SDK/threadsLite.h>
-#include <libPPUI/gdiplus_helpers.h>
+#include <libPPUI/WindowsImaging.h>
 
 #include "cover_cache.h"
 
@@ -12,32 +12,52 @@ namespace {
 
 constexpr size_t kMaxEntries = 256;
 
-HBITMAP ScaleToBitmap(const album_art_data_ptr& data, int sizePixels) {
-	auto image = GdiplusImageFromMem(data->get_ptr(), data->get_size());
-	if (!image || image->GetLastStatus() != Gdiplus::Ok) return NULL;
-	const UINT sourceWidth = image->GetWidth(), sourceHeight = image->GetHeight();
-	if (sourceWidth == 0 || sourceHeight == 0) return NULL;
-
-	const double scale = (std::min)(static_cast<double>(sizePixels) / sourceWidth, static_cast<double>(sizePixels) / sourceHeight);
-	const int width = (std::max)(1, static_cast<int>(sourceWidth * scale + 0.5));
-	const int height = (std::max)(1, static_cast<int>(sourceHeight * scale + 0.5));
-
-	Gdiplus::Bitmap scaled(width, height, PixelFormat32bppPARGB);
-	{
-		Gdiplus::Graphics graphics(&scaled);
-		graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-		graphics.DrawImage(image.get(), 0, 0, width, height);
+// Copies a premultiplied BGRA image into a top-down 32-bit DIB section, so AlphaBlend can draw it with its transparency.
+HBITMAP ToBitmap(IWICBitmapSource* source) {
+	const SIZE size = PP::WIC::bitmapSize(source);
+	BITMAPINFO info = {};
+	info.bmiHeader.biSize = sizeof(info.bmiHeader);
+	info.bmiHeader.biWidth = size.cx;
+	info.bmiHeader.biHeight = -size.cy;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	void* bits = nullptr;
+	const HBITMAP bitmap = CreateDIBSection(NULL, &info, DIB_RGB_COLORS, &bits, NULL, 0);
+	if (!bitmap) return NULL;
+	const UINT stride = static_cast<UINT>(size.cx) * 4;
+	if (FAILED(source->CopyPixels(nullptr, stride, stride * static_cast<UINT>(size.cy), static_cast<BYTE*>(bits)))) {
+		DeleteObject(bitmap);
+		return NULL;
 	}
-	HBITMAP bitmap = NULL;
-	scaled.GetHBITMAP(Gdiplus::Color(255, 255, 255), &bitmap);
 	return bitmap;
 }
+
+// Windows Imaging reads every format Windows has a codec for (JPEG, PNG, GIF, BMP, TIFF, WebP, and HEIF, AVIF or JPEG XL
+// when their extensions are installed), turns the picture upright from its EXIF orientation and converts its colour profile to sRGB.
+HBITMAP ScaleToBitmap(const album_art_data_ptr& data, int sizePixels) {
+	PP::WIC::WICContext wic;
+	PP::WIC::WICContext::bitmapSourceArg_t fit;
+	fit.wantSize = { sizePixels, sizePixels };
+	const auto source = wic.CreateBitmapSource(wic.CreateDecoder(data->get_ptr(), data->get_size()), fit);
+	return ToBitmap(wic.ChangePixelFormat(source, GUID_WICPixelFormat32bppPBGRA));
+}
+
+// Windows Imaging needs COM on the worker thread. A thread that already has COM in another mode keeps it.
+class ComScope {
+public:
+	ComScope() : m_initialized(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {}
+	~ComScope() { if (m_initialized) CoUninitialize(); }
+	ComScope(const ComScope&) = delete;
+	void operator=(const ComScope&) = delete;
+private:
+	const bool m_initialized;
+};
 
 // Runs on a worker thread. Returns NULL when the file has no front cover or it cannot be read.
 HBITMAP LoadCover(const metadb_handle_ptr& track, int sizePixels) {
 	try {
-		GdiplusScope gdiplus;
+		ComScope com;
 		auto extractor = album_art_manager_v2::get()->open(
 			pfc::list_single_ref_t<metadb_handle_ptr>(track),
 			pfc::list_single_ref_t<GUID>(album_art_ids::cover_front),

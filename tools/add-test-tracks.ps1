@@ -6,7 +6,7 @@ param([switch] $Compilation)
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$foobarExe = Join-Path $repo 'foobar2000_x64\foobar2000.exe'
+$foobarExe = Join-Path $repo 'foobar2000_x64_test\foobar2000.exe'
 
 & $foobarExe /add (Join-Path $repo 'testdata\tracks')
 if ($Compilation) {

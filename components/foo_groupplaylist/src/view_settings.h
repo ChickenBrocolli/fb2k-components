@@ -27,11 +27,17 @@ struct ViewSettings {
 	// When false the filled rating stars take foobar2000's highlight colour, as the header and label text do.
 	bool customStarColor = false;
 	COLORREF starColor = kOrangeTextColor;
+	// The Like column's hearts: as colour emoji (a red heart, as in most players) or in the star colour. With
+	// customLikeColor the star-colour hearts take likeColor instead (not the emoji, whose colour is its own).
+	LikeStyle likeStyle = LikeStyle::Emoji;
+	bool customLikeColor = false;
+	COLORREF likeColor = kHeartRedColor;
 	int rowPadding = kDefaultRowPadding;
 	int coverSize = kDefaultCoverSize;
 	// Behaviour.
-	// Off by default: the panel keeps one preset for every playlist until the user asks for one per playlist.
-	bool presetPerPlaylist = false;
+	// On by default: a playlist keeps the preset picked for it, and one never given a preset shows the panel's.
+	// So it changes nothing until a preset is picked, and the Library > GroupPlaylist autoplaylists come with theirs.
+	bool presetPerPlaylist = true;
 	bool dimBrackets = true;
 	// On by default: group headers and label rows show their track count and length at the right end.
 	// The place picks one of them, as a grouping by album artist then album may want the count on one only.

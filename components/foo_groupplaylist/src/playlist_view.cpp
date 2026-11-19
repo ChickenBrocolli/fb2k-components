@@ -1,6 +1,10 @@
 #include "stdafx.h"
 
 #include <libPPUI/PaintUtils.h>
+#include <uxtheme.h>
+#include <vssym32.h>
+
+#pragma comment(lib, "uxtheme.lib")
 
 #include "column_fit.h"
 #include "column_store.h"
@@ -19,6 +23,9 @@ constexpr size_t kCoverColumn = 0;
 constexpr size_t kInfoColumn = 1;
 constexpr size_t kFirstTrackColumn = 2;
 
+std::wstring_view View(const pfc::stringcvt::string_os_from_utf8& text) {
+	return std::wstring_view(text.get_ptr(), text.length());
+}
 
 // Sizes in pixels at 96 DPI. The cover size is a setting.
 constexpr int kCoverInset = 4;
@@ -269,6 +276,8 @@ void PlaylistView::RebuildColumns() {
 		listColumn.kind = def->kind;
 		if (def->kind == ColumnKind::Rating) {
 			compiler->compile_safe(listColumn.script, RatingReadPattern(GetRatingStorage()));
+		} else if (def->kind == ColumnKind::Like) {
+			compiler->compile_safe(listColumn.script, LikeReadPattern(GetRatingStorage()));
 		} else if (def->kind == ColumnKind::Duration) {
 			// On the playing track the original shows the time played, or the time left after a click.
 			compiler->compile_safe(listColumn.script, "$if(%isplaying%,%playback_time% / %length%,%length%)");
@@ -283,22 +292,28 @@ void PlaylistView::RebuildColumns() {
 	m_layout.places = PlacesFromOrder(order);
 	if (IsHeaderEnabled()) {
 		GetHeaderCtrl().SetOrderArray(static_cast<int>(order.size()), order.data());
+		ClearHeaderTitles();
 		OnColumnsChanged();
 	}
 	FitTrackColumns();
 	ReloadData();
 }
 
-// Sorts the whole active playlist. A reversed sort is the plain sort turned around. Ctrl+Z undoes it.
+// Sorts the whole active playlist, from the largest value down when descending. Ctrl+Z undoes it.
 void PlaylistView::SortPlaylist(const char* pattern, bool descending) {
 	m_sorting = true;
 	m_playlists->activeplaylist_undo_backup();
-	m_playlists->activeplaylist_sort_by_format(pattern, false);
 	if (descending) {
-		const t_size count = m_playlists->activeplaylist_get_item_count();
-		std::vector<t_size> order(count);
-		for (t_size index = 0; index < count; ++index) order[index] = count - 1 - index;
-		m_playlists->activeplaylist_reorder_items(order.data(), count);
+		// The SDK's sort keeps tracks with the same value in their playlist order in either direction.
+		metadb_handle_list tracks;
+		m_playlists->activeplaylist_get_all_items(tracks);
+		titleformat_object::ptr script;
+		titleformat_compiler::get()->compile_safe(script, pattern);
+		std::vector<t_size> order(tracks.get_count());
+		metadb_handle_list_helper::sort_by_format_get_order(tracks, order.data(), script, nullptr, -1);
+		m_playlists->activeplaylist_reorder_items(order.data(), order.size());
+	} else {
+		m_playlists->activeplaylist_sort_by_format(pattern, false);
 	}
 	m_sorting = false;
 }
@@ -323,7 +338,9 @@ void PlaylistView::OnColumnHeaderClick(t_size listColumn) {
 	const ColumnDef* def = FindColumnDef(m_layout.columns[position].name);
 	if (!def) return;
 	const bool descending = m_headerSort.Click(def->name, ActivePlaylistGuid());
-	SortPlaylist(def->kind == ColumnKind::Rating ? RatingReadPattern(GetRatingStorage()) : def->pattern.c_str(), descending);
+	const char* pattern = def->kind == ColumnKind::Rating ? RatingReadPattern(GetRatingStorage())
+		: def->kind == ColumnKind::Like ? LikeReadPattern(GetRatingStorage()) : def->pattern.c_str();
+	SortPlaylist(pattern, descending);
 }
 
 namespace {
@@ -349,13 +366,17 @@ void PlaylistView::ChooseUngrouped() {
 }
 
 // The playlist property holds the preset name, or kUngroupedMark for "None".
+void PlaylistView::SetPlaylistPreset(t_size playlist, const std::string& name) {
+	pfc::array_t<t_uint8> data;
+	data.set_data_fromptr(reinterpret_cast<const t_uint8*>(name.data()), name.size());
+	playlist_manager_v2::get()->playlist_set_property(playlist, guid_playlist_preset, data);
+}
+
 void PlaylistView::RememberPlaylistGrouping(const std::string& name) {
 	if (!m_settings.presetPerPlaylist) return;
 	const t_size playlist = m_playlists->get_active_playlist();
 	if (playlist == pfc_infinite) return;
-	pfc::array_t<t_uint8> data;
-	data.set_data_fromptr(reinterpret_cast<const t_uint8*>(name.data()), name.size());
-	playlist_manager_v2::get()->playlist_set_property(playlist, guid_playlist_preset, data);
+	SetPlaylistPreset(playlist, name);
 }
 
 // A playlist that had a preset chosen for it shows that preset. Other playlists keep the panel's preset.
@@ -691,7 +712,110 @@ bool PlaylistView::GetTooltipData(CPoint pointAbs, pfc::string_base& text, CRect
 		m_listColumns[subItem].kind == ColumnKind::Duration && IsPlayingItem(item)) {
 		return false;
 	}
-	return __super::GetTooltipData(pointAbs, text, rect, font);
+	if (!__super::GetTooltipData(pointAbs, text, rect, font)) return false;
+	m_tooltipText = pfc::stringcvt::string_wide_from_utf8(text.c_str()).get_ptr();
+	return true;
+}
+
+// The header's own title text is cleared, and each title is drawn after Windows has drawn the item's background,
+// hover and sort arrow, so titles go through the same painter as the rest of the panel and show colour emoji.
+// The list control keeps its own copy of every title (GetColumnText) and never reads the header's text back.
+void PlaylistView::ClearHeaderTitles() {
+	CHeaderCtrl header = GetHeaderCtrl();
+	const int count = header.GetItemCount();
+	for (int index = 0; index < count; ++index) {
+		HDITEM item = {};
+		item.mask = HDI_TEXT;
+		item.pszText = const_cast<LPWSTR>(L"");
+		header.SetItem(index, &item);
+	}
+}
+
+LRESULT PlaylistView::OnChildCustomDraw(int, LPNMHDR header, BOOL& handled) {
+	if (IsHeaderEnabled() && header->hwndFrom == GetHeaderCtrl().m_hWnd) return DrawHeaderItem(*reinterpret_cast<NMCUSTOMDRAW*>(header));
+	wchar_t className[32] = {};
+	if (GetClassNameW(header->hwndFrom, className, 32) && wcscmp(className, TOOLTIPS_CLASSW) == 0) {
+		return DrawTooltip(*reinterpret_cast<NMTTCUSTOMDRAW*>(header));
+	}
+	handled = FALSE;
+	return 0;
+}
+
+LRESULT PlaylistView::DrawHeaderItem(NMCUSTOMDRAW& draw) {
+	switch (draw.dwDrawStage) {
+	case CDDS_PREPAINT:
+		return CDRF_NOTIFYITEMDRAW;
+	case CDDS_ITEMPREPAINT:
+		return CDRF_NOTIFYPOSTPAINT;
+	case CDDS_ITEMPOSTPAINT: {
+		const size_t column = static_cast<size_t>(draw.dwItemSpec);
+		if (column >= GetColumnCount()) return CDRF_DODEFAULT;
+		pfc::string8 title;
+		GetColumnText(column, title);
+		if (title.is_empty()) return CDRF_DODEFAULT;
+
+		CHeaderCtrl header = GetHeaderCtrl();
+		// The colour the header itself would use: the dark scheme's (as the list control sets it), else the theme's.
+		COLORREF color = GetSysColor(COLOR_BTNTEXT);
+		if (GetDarkMode()) {
+			color = 0xdedede;
+		} else if (HTHEME theme = OpenThemeData(header, L"Header")) {
+			GetThemeColor(theme, HP_HEADERITEM, HIS_NORMAL, TMT_TEXTCOLOR, &color);
+			CloseThemeData(theme);
+		}
+		CDCHandle dc(draw.hdc);
+		DCStateScope state(dc);
+		dc.SelectFont(header.GetFont());
+		dc.SetTextColor(color);
+		dc.SetBkMode(TRANSPARENT);
+		// Windows puts a header title three edge widths in from each side.
+		const int margin = 3 * GetSystemMetrics(SM_CXEDGE);
+		CRect textRect(draw.rc);
+		textRect.DeflateRect(margin, 0);
+		const pfc::stringcvt::string_os_from_utf8 wide(title);
+		m_text.Draw(dc, View(wide), textRect, AlignOfColumnFormat(GetColumnFormat(column)), true);
+		return CDRF_DODEFAULT;
+	}
+	default:
+		return CDRF_DODEFAULT;
+	}
+}
+
+// The tooltip draws itself as usual. Then its text area is covered with its own background again and the text is
+// drawn through the painter, in the tooltip's own colours, so it matches the cell it repeats.
+LRESULT PlaylistView::DrawTooltip(NMTTCUSTOMDRAW& draw) {
+	switch (draw.nmcd.dwDrawStage) {
+	case CDDS_PREPAINT:
+		return CDRF_NOTIFYPOSTPAINT;
+	case CDDS_POSTPAINT: {
+		if (m_tooltipText.empty()) return CDRF_DODEFAULT;
+		CWindow tooltip(draw.nmcd.hdr.hwndFrom);
+		CRect textRect;
+		tooltip.GetWindowRect(textRect);
+		tooltip.SendMessage(TTM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&textRect));
+		tooltip.ScreenToClient(textRect);
+		CRect client;
+		tooltip.GetClientRect(client);
+
+		CDCHandle dc(draw.nmcd.hdc);
+		DCStateScope state(dc);
+		COLORREF color = static_cast<COLORREF>(tooltip.SendMessage(TTM_GETTIPTEXTCOLOR));
+		if (HTHEME theme = OpenThemeData(tooltip, L"Tooltip")) {
+			DrawThemeBackground(theme, dc, TTP_STANDARD, TTSS_NORMAL, client, textRect);
+			GetThemeColor(theme, TTP_STANDARD, TTSS_NORMAL, TMT_TEXTCOLOR, &color);
+			CloseThemeData(theme);
+		} else {
+			dc.FillSolidRect(textRect, static_cast<COLORREF>(tooltip.SendMessage(TTM_GETTIPBKCOLOR)));
+		}
+		dc.SelectFont(reinterpret_cast<HFONT>(tooltip.SendMessage(WM_GETFONT)));
+		dc.SetTextColor(color);
+		dc.SetBkMode(TRANSPARENT);
+		m_text.Draw(dc, m_tooltipText, textRect, TextPainter::Align::Left, false);
+		return CDRF_DODEFAULT;
+	}
+	default:
+		return CDRF_DODEFAULT;
+	}
 }
 
 // The time shown on the playing track changes every second.
@@ -777,25 +901,24 @@ void PlaylistView::RenderGroupHeaderText2(size_t baseItem, const CRect& headerRe
 	const pfc::stringcvt::string_os_from_utf8 summary(ShowsHeaderSummary(m_settings.showTrackSummary, m_settings.trackSummaryPlace) ? AlbumSummary(baseItem).c_str() : "");
 	if (summary.length() > 0) {
 		SelectObjectScope summaryFont(dc, static_cast<HFONT>(GetFont()));
-		SIZE summarySize = {};
-		dc.GetTextExtent(summary, static_cast<int>(summary.length()), &summarySize);
+		const int summaryWidth = m_text.Width(dc, View(summary));
 		// The header spans every column, which can run past the window. The summary stays in sight.
 		CRect client;
 		GetClientRect(client);
 		CRect summaryRect = textRect;
 		summaryRect.right = (std::min)(textRect.right, client.right - Scaled(8));
-		summaryRect.left = (std::max)(textRect.left, summaryRect.right - summarySize.cx);
-		dc.DrawText(summary, static_cast<int>(summary.length()), summaryRect, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+		summaryRect.left = (std::max)(textRect.left, summaryRect.right - summaryWidth);
+		m_text.Draw(dc, View(summary), summaryRect, TextPainter::Align::Right, false);
 		textRect.right = summaryRect.left - Scaled(12);
 	}
 	pfc::stringcvt::string_os_from_utf8 text(label);
-	dc.DrawText(text, static_cast<int>(text.length()), textRect, DT_NOPREFIX | DT_END_ELLIPSIS | DT_SINGLELINE | DT_VCENTER | DT_LEFT);
-	SIZE textSize = {};
+	m_text.Draw(dc, View(text), textRect, TextPainter::Align::Left, true);
+	const int textWidth = m_text.Width(dc, View(text));
 	const int ruleGap = textRect.Height() / 2;
-	if (dc.GetTextExtent(text, static_cast<int>(text.length()), &textSize) && textSize.cx + ruleGap < textRect.Width()) {
+	if (textWidth + ruleGap < textRect.Width()) {
 		const int y = textRect.CenterPoint().y;
 		const COLORREF ruleColor = PaintUtils::BlendColor(HeaderTextColor(), GetSysColorHook(colorBackground), 25);
-		PaintUtils::DrawSmoothedLine(dc, CPoint(textRect.left + textSize.cx + ruleGap, y), CPoint(textRect.right, y), ruleColor, 1.0 * m_dpi.cy / 96.0);
+		PaintUtils::DrawSmoothedLine(dc, CPoint(textRect.left + textWidth + ruleGap, y), CPoint(textRect.right, y), ruleColor, 1.0 * m_dpi.cy / 96.0);
 	}
 }
 
@@ -935,23 +1058,22 @@ void PlaylistView::RenderSubgroupLabels(size_t item, const CRect& labelRect, CDC
 		CRect textRect = lineRect;
 		const pfc::stringcvt::string_os_from_utf8 summary(ShowsLabelSummary(m_settings.showTrackSummary, m_settings.trackSummaryPlace) ? SectionSummary(item, level).c_str() : "");
 		if (summary.length() > 0) {
-			SIZE summarySize = {};
-			dc.GetTextExtent(summary, static_cast<int>(summary.length()), &summarySize);
+			const int summaryWidth = m_text.Width(dc, View(summary));
 			CRect summaryRect = lineRect;
 			summaryRect.right = (std::min)(lineRect.right, client.right - Scaled(8));
-			summaryRect.left = (std::max)(lineRect.left, summaryRect.right - summarySize.cx);
-			dc.DrawText(summary, static_cast<int>(summary.length()), summaryRect, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+			summaryRect.left = (std::max)(lineRect.left, summaryRect.right - summaryWidth);
+			m_text.Draw(dc, View(summary), summaryRect, TextPainter::Align::Right, false);
 			textRect.right = summaryRect.left - Scaled(12);
 		}
 
 		pfc::stringcvt::string_os_from_utf8 wide(text);
-		dc.DrawText(wide, static_cast<int>(wide.length()), textRect, DT_NOPREFIX | DT_END_ELLIPSIS | DT_SINGLELINE | DT_VCENTER | DT_LEFT);
-		SIZE textSize = {};
+		m_text.Draw(dc, View(wide), textRect, TextPainter::Align::Left, true);
 		const int ruleGap = rowHeight / 2;
-		if (level == 0 && dc.GetTextExtent(wide, static_cast<int>(wide.length()), &textSize) && textSize.cx + ruleGap < textRect.Width()) {
+		const int textWidth = level == 0 ? m_text.Width(dc, View(wide)) : 0;
+		if (level == 0 && textWidth + ruleGap < textRect.Width()) {
 			const int y = textRect.CenterPoint().y;
 			const COLORREF ruleColor = PaintUtils::BlendColor(LabelTextColor(), GetSysColorHook(colorBackground), 25);
-			PaintUtils::DrawSmoothedLine(dc, CPoint(textRect.left + textSize.cx + ruleGap, y), CPoint(textRect.right, y), ruleColor, 1.0 * m_dpi.cy / 96.0);
+			PaintUtils::DrawSmoothedLine(dc, CPoint(textRect.left + textWidth + ruleGap, y), CPoint(textRect.right, y), ruleColor, 1.0 * m_dpi.cy / 96.0);
 		}
 		lineRect.OffsetRect(0, rowHeight);
 	}
@@ -1099,7 +1221,9 @@ void PlaylistView::RenderCover(size_t block, const CRect& blockRect, CDCHandle d
 	CDC memory;
 	memory.CreateCompatibleDC(dc);
 	SelectObjectScope bitmapScope(memory, cover);
-	dc.BitBlt(origin.x, origin.y, dimensions.bmWidth, dimensions.bmHeight, memory, 0, 0, SRCCOPY);
+	// The cover keeps its transparency, so a cover with a see-through background sits on the row colour.
+	const BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
+	dc.AlphaBlend(origin.x, origin.y, dimensions.bmWidth, dimensions.bmHeight, memory, 0, 0, dimensions.bmWidth, dimensions.bmHeight, blend);
 }
 
 void PlaylistView::RenderInfoLines(size_t block, const CRect& blockRect, CDCHandle dc) {
@@ -1118,7 +1242,7 @@ void PlaylistView::RenderInfoLines(size_t block, const CRect& blockRect, CDCHand
 		const char* lineEnd = strchr(line, '|');
 		const t_size length = lineEnd ? static_cast<t_size>(lineEnd - line) : strlen(line);
 		pfc::stringcvt::string_os_from_utf8 wide(line, length);
-		dc.DrawText(wide, static_cast<int>(wide.length()), lineRect, DT_NOPREFIX | DT_END_ELLIPSIS | DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+		m_text.Draw(dc, View(wide), lineRect, TextPainter::Align::Left, true);
 		if (!lineEnd) break;
 		line = lineEnd + 1;
 		lineRect.OffsetRect(0, rowHeight);
@@ -1248,6 +1372,10 @@ bool PlaylistView::IsRatingColumn(size_t subItem) const {
 	return subItem < m_listColumns.size() && m_listColumns[subItem].kind == ColumnKind::Rating;
 }
 
+bool PlaylistView::IsLikeColumn(size_t subItem) const {
+	return subItem < m_listColumns.size() && m_listColumns[subItem].kind == ColumnKind::Like;
+}
+
 int PlaylistView::RatingOf(size_t item, size_t subItem) const {
 	pfc::string8 value;
 	GetSubItemText(item, subItem, value);
@@ -1265,14 +1393,13 @@ void PlaylistView::RenderDimmedBrackets(const char* text, const CRect& textRect,
 	for (const TextPart& part : SplitBracketParts(text)) {
 		if (x >= textRect.right) break;
 		const pfc::stringcvt::string_os_from_utf8 wide(part.text.c_str());
-		SIZE size = {};
-		dc.GetTextExtent(wide, static_cast<int>(wide.length()), &size);
+		const int width = m_text.Width(dc, View(wide));
 		CRect partRect(x, textRect.top, textRect.right, textRect.bottom);
-		const bool fits = x + size.cx <= textRect.right;
+		const bool fits = x + width <= textRect.right;
 		dc.SetTextColor(part.dim ? dim : plain);
-		dc.DrawText(wide, static_cast<int>(wide.length()), partRect, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_LEFT | (fits ? 0 : DT_END_ELLIPSIS));
+		m_text.Draw(dc, View(wide), partRect, TextPainter::Align::Left, !fits);
 		if (!fits) break;
-		x += size.cx;
+		x += width;
 	}
 }
 
@@ -1315,6 +1442,10 @@ void PlaylistView::UpdateStarFont() {
 void PlaylistView::RenderSubItemText(t_size item, t_size subItem, const CRect& subItemRect, const CRect& updateRect, CDCHandle dc, bool allowColors) {
 	// The playing track is drawn in bold, so it stands out even when the Playing column is hidden.
 	// The list control selects its own font for each row, so the bold font goes in here, per cell.
+	if (IsLikeColumn(subItem)) {
+		RenderLikeCell(item, subItem, subItemRect, dc);
+		return;
+	}
 	if (!IsRatingColumn(subItem)) {
 		const bool bold = m_settings.boldPlaying && m_playingFont && IsPlayingItem(item);
 		SelectObjectScope fontScope(dc, bold ? static_cast<HGDIOBJ>(static_cast<HFONT>(m_playingFont)) : static_cast<HGDIOBJ>(dc.GetCurrentFont()));
@@ -1335,7 +1466,10 @@ void PlaylistView::RenderSubItemText(t_size item, t_size subItem, const CRect& s
 			RenderDimmedBrackets(text.c_str(), GetItemTextRectHook(item, subItem, subItemRect), dc);
 			return;
 		}
-		__super::RenderSubItemText(item, subItem, subItemRect, updateRect, dc, allowColors);
+		// Every track cell is a plain text cell (GetCellType is not overridden), drawn here as the list control would,
+		// so its text goes through the same painter as the rest of the panel.
+		const pfc::stringcvt::string_os_from_utf8 wide(text.c_str());
+		m_text.Draw(dc, View(wide), GetItemTextRectHook(item, subItem, subItemRect), AlignOfColumnFormat(GetColumnFormat(subItem)), true);
 		return;
 	}
 	const int savedRating = RatingOf(item, subItem);
@@ -1363,15 +1497,45 @@ void PlaylistView::RenderSubItemText(t_size item, t_size subItem, const CRect& s
 	}
 }
 
-// The stars sit in the track row, below any subgroup labels the row carries.
+// One heart, in the middle of the cell, on or off: filled when the track is liked (in the heart colour, or as the colour
+// emoji), an outline fading toward the background when not. A click turns it over. Unlike the stars, the pointer
+// previews nothing: a heart is a plain switch, as in other players.
+void PlaylistView::RenderLikeCell(size_t item, size_t subItem, const CRect& subItemRect, CDCHandle dc) {
+	const bool liked = RatingOf(item, subItem) > 0;
+	CRect rowRect(subItemRect.left, subItemRect.top, subItemRect.right, subItemRect.top + GetItemHeight());
+	DCStateScope state(dc);
+	dc.SetBkMode(TRANSPARENT);
+	dc.IntersectClipRect(subItemRect);
+	// The emoji heart is drawn in the row font, through the painter that shows colour emoji.
+	if (liked && m_settings.likeStyle == LikeStyle::Emoji) {
+		m_text.Draw(dc, L"\x2764\xFE0F", rowRect, TextPainter::Align::Center, false);
+		return;
+	}
+	UpdateStarFont();
+	if (m_starFontIsIcons) dc.SelectFont(m_starFont);
+	// Segoe Fluent Icons and Segoe MDL2 Assets: HeartFill and Heart. Without them, the row font's heart characters.
+	const wchar_t* const glyph = liked ? (m_starFontIsIcons ? L"\xEB52" : L"\x2665") : (m_starFontIsIcons ? L"\xEB51" : L"\x2661");
+	dc.SetTextColor(liked ? LikeFillColor() : PaintUtils::BlendColor(dc.GetTextColor(), GetSysColorHook(colorBackground), 55));
+	dc.DrawText(glyph, 1, rowRect, DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+}
+
+// The hearts' own colour, or the star colour.
+COLORREF PlaylistView::LikeFillColor() const {
+	return m_settings.customLikeColor ? m_settings.likeColor : StarFillColor();
+}
+
+// The stars and the heart sit in the track row, below any subgroup labels the row carries. On the heart, the
+// position holds the like a click would give: 1 to like, 0 to unlike.
 std::optional<StarPosition> PlaylistView::StarAtPoint(CPoint clientPoint) const {
 	if (IsOnPinnedHeader(clientPoint)) return std::nullopt;
 	size_t item = 0;
 	size_t subItem = 0;
-	if (!GetItemAtPointAbsEx(PointClientToAbs(clientPoint), item, subItem) || !IsRatingColumn(subItem)) return std::nullopt;
+	if (!GetItemAtPointAbsEx(PointClientToAbs(clientPoint), item, subItem)) return std::nullopt;
+	if (!IsRatingColumn(subItem) && !IsLikeColumn(subItem)) return std::nullopt;
 	const CRect cell = GetSubItemRect(item, subItem);
 	const int rowTop = cell.top + LabelLinesAbove(item) * GetItemHeight();
 	if (clientPoint.y < rowTop || clientPoint.y >= rowTop + GetItemHeight()) return std::nullopt;
+	if (IsLikeColumn(subItem)) return StarPosition{ item, subItem, RatingOf(item, subItem) > 0 ? 0 : 1 };
 	const int slot = StarSlotWidth();
 	const std::optional<int> rating = RatingAtOffset(clientPoint.x - cell.left, RatingGapWidth(slot, static_cast<int>(GetColumnSpacing())), slot);
 	if (!rating) return std::nullopt;
@@ -1399,7 +1563,9 @@ LRESULT PlaylistView::OnStarMouseMove(UINT message, WPARAM buttons, LPARAM posit
 		MoveStarHover(std::nullopt);
 		return 0;
 	}
-	const std::optional<StarPosition> at = StarAtPoint(CPoint(position));
+	std::optional<StarPosition> at = StarAtPoint(CPoint(position));
+	// Only the stars preview a click; the heart is a plain switch.
+	if (at && IsLikeColumn(at->subItem)) at.reset();
 	if (at && !m_starHover.Position()) {
 		TRACKMOUSEEVENT leave = { sizeof(leave), TME_LEAVE, m_hWnd, 0 };
 		TrackMouseEvent(&leave);
@@ -1418,18 +1584,27 @@ LRESULT PlaylistView::OnStarButtonDown(UINT message, WPARAM, LPARAM position, BO
 	}
 	SetFocus();
 	if (message == WM_LBUTTONDOWN) {
-		WriteRatingOf(hit->item, hit->rating);
+		if (IsLikeColumn(hit->subItem)) WriteLikeOf(hit->item, hit->rating != 0);
+		else WriteRatingOf(hit->item, hit->rating);
+		// The cell now shows the new value; the pointer previews the next click only after it moves.
+		MoveStarHover(std::nullopt);
 	}
 	return 0;
+}
+
+void PlaylistView::WriteLikeOf(size_t item, bool liked) {
+	metadb_handle_ptr track;
+	if (!m_playlists->activeplaylist_get_item_handle(track, item)) return;
+	metadb_handle_list tracks;
+	tracks.add_item(track);
+	WriteLikes(tracks, liked, GetRatingStorage());
 }
 
 // The playlist reports the change when the write is done, and the row repaints then.
 void PlaylistView::WriteRatingOf(size_t item, int rating) {
 	metadb_handle_ptr track;
 	if (!m_playlists->activeplaylist_get_item_handle(track, item)) return;
-	if (!WriteRating(track, rating, GetRatingStorage())) {
-		MessageBox(TrW("The rating could not be saved in Playback Statistics, because that component (foo_playcount) is not installed.\nInstall it, or choose File tags under Rating on the GroupPlaylist preferences page.").c_str(), TrW("Rating").c_str(), MB_OK | MB_ICONWARNING);
-	}
+	WriteRating(track, rating, GetRatingStorage());
 }
 
 // Ctrl with the mouse wheel resizes the album art of every panel, the same setting as on the Preferences page.

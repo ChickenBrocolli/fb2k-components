@@ -13,6 +13,7 @@
 #include "rating_cell.h"
 #include "rating_store.h"
 #include "smooth_scroll.h"
+#include "text_painter.h"
 #include "view_settings.h"
 
 // List control that shows the active playlist.
@@ -61,6 +62,9 @@ public:
 	void SetHostFont(HFONT font);
 	// Saves the shared presets and updates every panel. renames pairs an old name with its new name.
 	static void ApplyGroupPresets(const std::vector<GroupPreset>& presets, const std::vector<std::pair<std::string, std::string>>& renames);
+	// Gives a playlist the preset its panels show it with, as if it had been picked from the Groups menu there.
+	// It counts only while "Remember a preset per playlist" is on; without a preset of that name the panel's stays.
+	static void SetPlaylistPreset(t_size playlist, const std::string& name);
 
 	const std::vector<ColumnDef>& ColumnDefs() const { return m_columnDefs; }
 	bool IsColumnShown(const std::string& name) const;
@@ -100,6 +104,7 @@ public:
 		NOTIFY_CODE_HANDLER(HDN_ITEMCHANGING, OnHeaderItemChanging)
 		NOTIFY_CODE_HANDLER(HDN_ENDTRACK, OnHeaderEndTrack)
 		NOTIFY_CODE_HANDLER(HDN_DIVIDERDBLCLICK, OnHeaderDividerDoubleClick)
+		NOTIFY_CODE_HANDLER(NM_CUSTOMDRAW, OnChildCustomDraw)
 		MESSAGE_HANDLER(kColumnDragEndedMessage, OnColumnDragEnded)
 		MESSAGE_HANDLER(WM_TIMER, OnSmoothScrollTimer)
 		CHAIN_MSG_MAP(CListControlWithSelectionBase)
@@ -130,6 +135,8 @@ protected:
 	COLORREF LabelTextColor() const;
 	// The filled rating stars: their own colour, or foobar2000's highlight colour like the header and label text.
 	COLORREF StarFillColor() const;
+	// The filled hearts of the Like column: their own colour, or the star colour.
+	COLORREF LikeFillColor() const;
 	void RenderSubItemText(t_size item, t_size subItem, const CRect& subItemRect, const CRect& updateRect, CDCHandle dc, bool allowColors) override;
 	void RenderGroupOverlayColumn(size_t baseItem, size_t subItem, const CRect& albumColumnRect, const CRect& updateRect, CDCHandle dc) override;
 	void RenderOverlay2(const CRect& updateRect, CDCHandle dc) override;
@@ -186,6 +193,9 @@ private:
 	CRect CoverBlockContentRect(size_t block, const CRect& blockRect) const;
 	LRESULT OnPinnedHeaderButton(UINT message, WPARAM, LPARAM position, BOOL& handled);
 	bool IsRatingColumn(size_t subItem) const;
+	bool IsLikeColumn(size_t subItem) const;
+	void RenderLikeCell(size_t item, size_t subItem, const CRect& subItemRect, CDCHandle dc);
+	void WriteLikeOf(size_t item, bool liked);
 	int StarSlotWidth() const;
 	void UpdateStarFont();
 	void RenderDimmedBrackets(const char* text, const CRect& textRect, CDCHandle dc);
@@ -228,6 +238,10 @@ private:
 	LRESULT OnHeaderItemChanging(int, LPNMHDR header, BOOL& handled);
 	LRESULT OnHeaderEndTrack(int, LPNMHDR header, BOOL& handled);
 	LRESULT OnHeaderDividerDoubleClick(int, LPNMHDR header, BOOL& handled);
+	LRESULT OnChildCustomDraw(int, LPNMHDR header, BOOL& handled);
+	LRESULT DrawHeaderItem(NMCUSTOMDRAW& draw);
+	LRESULT DrawTooltip(NMTTCUSTOMDRAW& draw);
+	void ClearHeaderTitles();
 	LRESULT OnColumnDragEnded(UINT, WPARAM column, LPARAM, BOOL&);
 	void ApplyCoverColumnWidth();
 	std::vector<size_t> TrackColumnsOnScreen() const;
@@ -294,6 +308,9 @@ private:
 	int m_blockLineCount = 0;
 	GroupModel m_groups;
 	CoverCache m_covers;
+	TextPainter m_text;
+	// The text of the tooltip on screen, which the tooltip is drawn with (see DrawTooltip).
+	mutable std::wstring m_tooltipText;
 	ViewSettings m_settings = LoadViewSettings();
 	HFONT m_hostFont = NULL;
 	CFont m_trackFont;

@@ -41,6 +41,7 @@ public:
 	// A panel never configured has no data and keeps the defaults, so a new panel fits its columns to its width.
 	// A panel saved before version 4 keeps the widths its user set, so it starts with that off.
 	void set_configuration(ui_element_config::ptr config) override {
+		SettleRatingStorage(WasSavedBefore(config));
 		try {
 			::ui_element_config_parser parser(config);
 			t_uint32 version = 0;
@@ -85,6 +86,18 @@ public:
 
 	// write_string is spelled out because "builder << const char*" picks the bool overload
 	// and stores one byte in place of the text.
+	// Whether the configuration was saved by a panel, rather than being a new panel's empty one.
+	static bool WasSavedBefore(ui_element_config::ptr config) {
+		try {
+			::ui_element_config_parser parser(config);
+			t_uint32 version = 0;
+			parser >> version;
+			return version >= 1 && version <= kConfigVersion;
+		} catch (...) {
+			return false;
+		}
+	}
+
 	ui_element_config::ptr get_configuration() override {
 		const ColumnLayout layout = GetColumnLayout();
 		ui_element_config_builder builder;

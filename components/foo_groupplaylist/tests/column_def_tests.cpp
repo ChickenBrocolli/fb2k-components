@@ -151,6 +151,13 @@ void ANewPanelShowsOnlyBuiltInColumns() {
 	}
 }
 
+// A new panel shows the heart, as most players do, just before the length at the right end.
+void ANewPanelShowsTheLikeColumnBeforeTheLength() {
+	std::vector<std::string> names;
+	for (const ColumnLayout::Column& column : DefaultColumnLayout().columns) names.push_back(column.name);
+	CHECK((names == std::vector<std::string>{ "Playing", "Track", "Title", "Like", "Duration" }));
+}
+
 void ACustomColumnNamedLikeABuiltInIsRenamedAndKept() {
 	const std::vector<ColumnDef> renamed = RenameClashingColumns(
 		{ { "Mood", "%mood%", ColumnAlignment::Left, 50 }, { "Bitrate", "%bitrate%k", ColumnAlignment::Center, 60 } },
@@ -266,6 +273,7 @@ void RunColumnDefTests() {
 	ANameOfABuiltInColumnIsReported();
 	TheShippedColumnNamesDoNotCollide();
 	ANewPanelShowsOnlyBuiltInColumns();
+	ANewPanelShowsTheLikeColumnBeforeTheLength();
 	ACustomColumnNamedLikeABuiltInIsRenamedAndKept();
 	ARenameNeverLandsOnATakenName();
 	ColumnsWithoutAClashStayAsTheyAre();

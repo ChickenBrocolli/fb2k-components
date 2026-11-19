@@ -10,6 +10,9 @@
 // Group presets and the rules for storing and naming them.
 // Standard library only, so the unit tests build without the foobar2000 SDK.
 
+// The preset the Library > GroupPlaylist autoplaylists sorted by play count or date are shown with.
+constexpr char kArtistCoverPresetName[] = "Artist / Cover";
+
 // One way to group a playlist, picked from the Groups menu.
 //
 // headerPattern  Tracks with the same value share an album header line.
@@ -32,23 +35,29 @@ struct GroupPreset {
 };
 
 // What a new installation starts with. The Groups preferences page edits the list.
-// The first four are the author's own presets.
+// The presets headed by the artist come first, then those headed by the album; each part runs from the most
+// detailed to the plainest. In the names "/" is one level down, "-" shares a line and "+" sits beside.
+// Artist - Album / Cover, Artist / Cover + Album Info, Artist / Cover / Album and Album are the original's.
 inline std::vector<GroupPreset> DefaultGroupPresets() {
 	return {
-		{ "Artist - Album / Cover", "%path_sort%",
-		  "[%album artist% - ]['['%date%']' ][%album%]", "[%album%]", false, { "[Disc %discnumber%]" }, true },
-		{ "Artist / Cover + Album Info", "%path_sort%",
-		  "[%album artist%]", "[%album%|][%date%|][%genre%]", true, { "[Disc %discnumber%]" } },
 		{ "Artist / Cover / Album", "%path_sort%",
 		  "[%album artist%]", "[%album%]", false, { "['['%date%']' ][%album%]", "[Disc %discnumber%]" } },
-		{ "Album", "%path_sort%",
-		  "[%album%]",
-		  "[%artist%]|Year    [%date%]|Codec  [%codec%]|Bitrate  [%bitrate%]kbps|Sample [%samplerate%]Hz|[%comment%]", true, {} },
-		// Not in the original settings. The "Album" preset with a label row where the disc changes.
-		{ "Album + Disc", "%path_sort%",
+		{ "Artist / Cover + Album Info", "%path_sort%",
+		  "[%album artist%]", "[%album%|][%date%|][%genre%]", true, { "[Disc %discnumber%]" } },
+		{ "Artist - Album / Cover", "%path_sort%",
+		  "[%album artist% - ]['['%date%']' ][%album%]", "[%album%]", false, { "[Disc %discnumber%]" }, true },
+		// Not in the original. The artist, then a cover per album with its tracks and nothing else: it suits lists
+		// sorted by play count or date, where nearly every track starts a group, like a viewing history.
+		{ kArtistCoverPresetName, "%path_sort%",
+		  "[%album artist%]", "[%album%]", false, {} },
+		// Not in the original. The "Album" preset with a label row where the disc changes.
+		{ "Album / Disc", "%path_sort%",
 		  "[%album%]",
 		  "[%artist%]|Year    [%date%]|Codec  [%codec%]|Bitrate  [%bitrate%]kbps|Sample [%samplerate%]Hz|[%comment%]",
 		  true, { "[Disc %discnumber%]" }, true },
+		{ "Album", "%path_sort%",
+		  "[%album%]",
+		  "[%artist%]|Year    [%date%]|Codec  [%codec%]|Bitrate  [%bitrate%]kbps|Sample [%samplerate%]Hz|[%comment%]", true, {} },
 	};
 }
 
@@ -91,10 +100,12 @@ inline bool SamePresetName(const std::string& a, const std::string& b) {
 	return true;
 }
 
+// A shipped preset that was renamed is still found by its old name ("Album + Disc" became "Album / Disc").
 inline std::optional<size_t> FindPresetByName(const std::vector<GroupPreset>& presets, const std::string& name) {
 	for (size_t index = 0; index < presets.size(); ++index) {
 		if (SamePresetName(presets[index].name, name)) return index;
 	}
+	if (SamePresetName(name, "Album + Disc")) return FindPresetByName(presets, "Album / Disc");
 	return std::nullopt;
 }
 

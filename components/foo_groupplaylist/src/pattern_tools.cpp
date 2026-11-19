@@ -47,13 +47,14 @@ constexpr FieldEntry kFileFields[] = {
 	{ "File size", "%filesize_natural%" },
 };
 
+// GroupPlaylist's own store (track_store.h).
 constexpr FieldEntry kStatisticsFields[] = {
-	{ "Play count", "%play_count%" },
-	{ "Rating (number)", "%rating%" },
-	{ "Rating (stars)", "$repeat($char(9733),%rating%)$repeat($char(9734),$sub(5,%rating%))" },
-	{ "First played", "%first_played%" },
-	{ "Last played", "%last_played%" },
-	{ "Added to library", "%added%" },
+	{ "Play count", "%gp_play_count%" },
+	{ "Rating (number)", "%gp_rating%" },
+	{ "Rating (stars)", "$repeat($char(9733),%gp_rating%)$repeat($char(9734),$sub(5,%gp_rating%))" },
+	{ "First played", "%gp_first_played%" },
+	{ "Last played", "%gp_last_played%" },
+	{ "Added to library", "%gp_added%" },
 };
 
 constexpr FieldEntry kReplayGainFields[] = {

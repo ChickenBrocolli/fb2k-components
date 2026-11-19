@@ -20,9 +20,15 @@ inline ColumnAlignment ColumnAlignmentFrom(int number) {
 }
 
 // Text shows what the pattern produces. Rating shows the track's rating as stars and changes it on a click
-// (rating_cell.h). Its pattern is unused, because a setting decides where the rating is kept (rating_store.h).
+// (rating_cell.h). Like shows a heart and likes or unlikes the track on a click. Their patterns are unused, because
+// a setting decides where ratings and likes are kept (rating_store.h).
 // Duration shows the length, and on the playing track the time played or left (see PlaylistView).
-enum class ColumnKind { Text, Rating, Duration };
+enum class ColumnKind { Text, Rating, Duration, Like };
+
+// The columns whose cells are clicked to change the track: their look and alignment come from code.
+inline bool IsClickColumn(ColumnKind kind) {
+	return kind == ColumnKind::Rating || kind == ColumnKind::Like;
+}
 
 // One track column the user can show from the Columns menu.
 struct ColumnDef {
@@ -85,7 +91,8 @@ inline std::vector<std::vector<ColumnDef>> BuiltInColumnGroups() {
 		},
 		{
 			{ "Rating", "", ColumnAlignment::Left, 80, ColumnKind::Rating },
-			{ "Played", "[%play_count%]", ColumnAlignment::Right, 55 },
+			{ "Like", "", ColumnAlignment::Center, 40, ColumnKind::Like },
+			{ "Played", "[%gp_play_count%]", ColumnAlignment::Right, 55 },
 		},
 		{
 			{ "File name", "%filename_ext%", ColumnAlignment::Left, 200 },
@@ -150,15 +157,15 @@ inline std::vector<ColumnDef> ParseBuiltInEdits(const std::string& text) {
 }
 
 // The built-in columns with the user's changes. A change for a name no built-in column has is left out.
-// Only text columns take a pattern: the Duration column draws the time played or left, and the Rating column's
-// stars come from code. The Rating column also keeps its alignment, because the stars are drawn from the left.
+// Only text columns take a pattern: the Duration column draws the time played or left, and the Rating and Like
+// columns' stars and heart come from code. Those two also keep their alignment, which the drawing sets.
 inline std::vector<ColumnDef> ApplyBuiltInEdits(std::vector<ColumnDef> defs, const std::vector<ColumnDef>& edits) {
 	for (ColumnDef& def : defs) {
 		for (const ColumnDef& edit : edits) {
 			if (edit.name != def.name) continue;
 			def.title = edit.title;
 			if (def.kind == ColumnKind::Text) def.pattern = edit.pattern;
-			if (def.kind != ColumnKind::Rating) def.alignment = edit.alignment;
+			if (!IsClickColumn(def.kind)) def.alignment = edit.alignment;
 		}
 	}
 	return defs;
@@ -188,9 +195,10 @@ inline std::vector<ColumnDef> DefaultCustomColumnDefs() {
 }
 
 // What a new panel shows. Album and artist are left out because the group header and the cover text show them.
+// The heart sits just before the length, as in most players. A panel set up before keeps its own columns.
 inline ColumnLayout DefaultColumnLayout() {
 	ColumnLayout layout;
-	layout.columns = { { "Playing", 28 }, { "Track", 50 }, { "Title", 300 }, { "Duration", 70 } };
+	layout.columns = { { "Playing", 28 }, { "Track", 50 }, { "Title", 300 }, { "Like", 40 }, { "Duration", 70 } };
 	return layout;
 }
 

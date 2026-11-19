@@ -13,6 +13,9 @@ void RunHeaderSortTests();
 void RunColumnFitTests();
 void RunColumnPlacesTests();
 void RunSelectionOrderTests();
+void RunTrackRecordTests();
+void RunLabelFitTests();
+void RunViewSettingsFieldsTests();
 
 int main() {
 	RunGroupModelTests();
@@ -28,6 +31,9 @@ int main() {
 	RunColumnFitTests();
 	RunColumnPlacesTests();
 	RunSelectionOrderTests();
+	RunTrackRecordTests();
+	RunLabelFitTests();
+	RunViewSettingsFieldsTests();
 
 	if (FailureCount() == 0) {
 		std::printf("unit tests: all checks passed\n");

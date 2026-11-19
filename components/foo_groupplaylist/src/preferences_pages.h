@@ -11,6 +11,8 @@ inline constexpr GUID guid_preferences_page = { 0xe49aca5c, 0xa4ad, 0x4597, { 0x
 inline constexpr GUID guid_columns_page = { 0xa22e7759, 0xf596, 0x4ac3, { 0xa4, 0x25, 0x33, 0x98, 0xaf, 0x30, 0xc7, 0x6a } };
 inline constexpr GUID guid_groups_page = { 0xdef43071, 0x4e72, 0x48e6, { 0xa3, 0x4c, 0x3b, 0x39, 0x12, 0xe9, 0x37, 0x8b } };
 inline constexpr GUID guid_scrolling_page = { 0x96d228d5, 0x35af, 0x4af8, { 0xaa, 0xdd, 0x4c, 0xf6, 0x95, 0x76, 0x64, 0xd7 } };
+// Ratings and likes sits below it too: where they are kept, the star colour and the hearts (rating_page.cpp).
+inline constexpr GUID guid_rating_page = { 0x5b07e3d1, 0x9a64, 0x4c28, { 0xb1, 0x4f, 0x73, 0x2e, 0x0d, 0x96, 0xa8, 0x5c } };
 
 // A panel or its header menu saved settings that a page also shows: the cover size and column dragging on the main
 // page, smooth scrolling, header pinning and the scroll preset on the Scrolling page. An open page takes them,
@@ -27,11 +29,15 @@ ViewSettings WithScrollingPageEdits(const ViewSettings& view);
 // The Scrolling page takes what the header menu saved (part of PanelSettingsChanged).
 void TakeScrollingPageChanges();
 
+// The Ratings and likes page's part of the preview (rating_page.cpp): the star colour and the hearts.
+ViewSettings WithRatingPageEdits(const ViewSettings& view);
+
 // Settings were imported (settings_transfer.h). A page that foobar2000 keeps from earlier in this Preferences
 // window drops its edits and shows the imported settings, so Apply or OK there cannot save the old ones again.
 void ReloadColumnsPage();
 void ReloadGroupsPage();
 void ReloadScrollingPage();
+void ReloadRatingPage();
 
 // Opens Preferences at the Columns page.
 void ShowColumnsPage();

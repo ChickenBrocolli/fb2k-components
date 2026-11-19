@@ -72,21 +72,28 @@
     <ClCompile Include="PCH.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="autoplaylist_menu.cpp" />
     <ClCompile Include="column_store.cpp" />
     <ClCompile Include="component.cpp" />
     <ClCompile Include="cover_cache.cpp" />
+    <ClCompile Include="emoji_table.cpp" />
     <ClCompile Include="columns_page.cpp" />
     <ClCompile Include="groups_page.cpp" />
     <ClCompile Include="scrolling_page.cpp" />
     <ClCompile Include="settings_transfer.cpp" />
+    <ClCompile Include="like_commands.cpp" />
     <ClCompile Include="panel.cpp" />
     <ClCompile Include="pattern_tools.cpp" />
+    <ClCompile Include="playback_history.cpp" />
     <ClCompile Include="playlist_view.cpp" />
     <ClCompile Include="preferences_page.cpp" />
     <ClCompile Include="preset_store.cpp" />
+    <ClCompile Include="rating_page.cpp" />
     <ClCompile Include="rating_store.cpp" />
     <ClCompile Include="smooth_scroll.cpp" />
+    <ClCompile Include="text_painter.cpp" />
     <ClCompile Include="track_menu.cpp" />
+    <ClCompile Include="track_store.cpp" />
     <ClCompile Include="ui_language.cpp" />
     <ClCompile Include="view_settings.cpp" />
   </ItemGroup>
@@ -96,7 +103,10 @@
     <ClInclude Include="column_places.h" />
     <ClInclude Include="header_sort.h" />
     <ClInclude Include="selection_order.h" />
+    <ClInclude Include="text_painter.h" />
     <ClInclude Include="track_menu.h" />
+    <ClInclude Include="track_record.h" />
+    <ClInclude Include="track_store.h" />
     <ClInclude Include="scroll_presets.h" />
     <ClInclude Include="settings_file.h" />
     <ClInclude Include="settings_transfer.h" />
@@ -105,6 +115,7 @@
     <ClInclude Include="link_button.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="cover_cache.h" />
+    <ClInclude Include="emoji_table.h" />
     <ClInclude Include="group_preset.h" />
     <ClInclude Include="preferences_pages.h" />
     <ClInclude Include="group_model.h" />

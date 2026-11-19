@@ -2,7 +2,11 @@
 
 #include "view_settings.h"
 
+#include <functional>
+#include <memory>
 #include <optional>
+
+#include "view_settings_fields.h"
 
 namespace {
 
@@ -31,28 +35,57 @@ const ViewSettings kDefaults = [] {
 	return settings;
 }();
 
-cfg_bool cfg_smoothScroll(SettingGuid(1), kDefaults.smoothScroll);
-cfg_bool cfg_customTrackFont(SettingGuid(2), kDefaults.customTrackFont);
-cfg_struct_t<LOGFONTW> cfg_trackFont(SettingGuid(3), kDefaults.trackFont);
-cfg_bool cfg_customHeaderFont(SettingGuid(4), kDefaults.customHeaderFont);
-cfg_struct_t<LOGFONTW> cfg_headerFont(SettingGuid(5), kDefaults.headerFont);
-cfg_uint cfg_headerColor(SettingGuid(6), kDefaults.headerColor);
-cfg_uint cfg_labelColor(SettingGuid(7), kDefaults.labelColor);
-// -1 until saved once: UsesOwnTextColor then keeps a colour picked before 0.9.2.
-cfg_int cfg_customHeaderColor(SettingGuid(29), -1);
-cfg_int cfg_customLabelColor(SettingGuid(30), -1);
-cfg_bool cfg_customStarColor(SettingGuid(31), kDefaults.customStarColor);
-cfg_uint cfg_starColor(SettingGuid(32), kDefaults.starColor);
-cfg_int cfg_rowPadding(SettingGuid(8), kDefaults.rowPadding);
-cfg_int cfg_coverSize(SettingGuid(9), kDefaults.coverSize);
-cfg_bool cfg_presetPerPlaylist(SettingGuid(10), kDefaults.presetPerPlaylist);
-cfg_bool cfg_dimBrackets(SettingGuid(11), kDefaults.dimBrackets);
-cfg_bool cfg_sortOnHeaderClick(SettingGuid(12), kDefaults.sortOnHeaderClick);
-cfg_bool cfg_scrollPerPlaylist(SettingGuid(13), kDefaults.scrollPerPlaylist);
-cfg_bool cfg_boldPlaying(SettingGuid(14), kDefaults.boldPlaying);
+// One configuration entry per setting of ViewSettings, made from the list in view_settings_fields.h when the
+// component loads, before foobar2000 reads the configuration. Each keeps the type it has always been saved as.
+struct StoredSetting {
+	std::function<void(ViewSettings&)> load;
+	std::function<void(const ViewSettings&)> save;
+};
+
+std::vector<StoredSetting> MakeStoredSettings() {
+	using namespace view_settings_fields;
+	std::vector<StoredSetting> stored;
+	VisitViewSettings([&](const auto& field) {
+		using F = std::decay_t<decltype(field)>;
+		const GUID guid = SettingGuid(field.store);
+		const auto member = field.member;
+		if constexpr (std::is_same_v<F, BoolField>) {
+			auto cfg = std::make_shared<cfg_bool>(guid, kDefaults.*member);
+			stored.push_back({ [cfg, member](ViewSettings& v) { v.*member = cfg->get(); }, [cfg, member](const ViewSettings& v) { *cfg = v.*member; } });
+		} else if constexpr (std::is_same_v<F, IntField>) {
+			auto cfg = std::make_shared<cfg_int>(guid, kDefaults.*member);
+			const int minimum = field.minimum, maximum = field.maximum;
+			stored.push_back({ [=](ViewSettings& v) { v.*member = ClampSetting(static_cast<int>(cfg->get()), minimum, maximum); },
+				[=](const ViewSettings& v) { *cfg = ClampSetting(v.*member, minimum, maximum); } });
+		} else if constexpr (std::is_same_v<F, ColorField>) {
+			auto cfg = std::make_shared<cfg_uint>(guid, kDefaults.*member);
+			stored.push_back({ [cfg, member](ViewSettings& v) { v.*member = static_cast<COLORREF>(cfg->get()); },
+				[cfg, member](const ViewSettings& v) { *cfg = static_cast<t_uint32>(v.*member); } });
+		} else if constexpr (std::is_same_v<F, FontField>) {
+			auto cfg = std::make_shared<cfg_struct_t<LOGFONTW>>(guid, kDefaults.*member);
+			stored.push_back({ [cfg, member](ViewSettings& v) { v.*member = cfg->get(); }, [cfg, member](const ViewSettings& v) { *cfg = v.*member; } });
+		} else if constexpr (std::is_same_v<F, OwnColorField>) {
+			// -1 until saved once: UsesOwnTextColor then keeps a colour picked before 0.9.2.
+			auto cfg = std::make_shared<cfg_int>(guid, -1);
+			const auto color = field.color;
+			stored.push_back({ [=](ViewSettings& v) { v.*member = UsesOwnTextColor(static_cast<int>(cfg->get()), v.*color); },
+				[=](const ViewSettings& v) { *cfg = v.*member ? 1 : 0; } });
+		} else {
+			auto cfg = std::make_shared<cfg_int>(guid, static_cast<int>(kDefaults.*member));
+			const auto from = field.from;
+			stored.push_back({ [=](ViewSettings& v) { v.*member = from(static_cast<int>(cfg->get())); },
+				[=](const ViewSettings& v) { *cfg = static_cast<int>(v.*member); } });
+		}
+	});
+	return stored;
+}
+
+const std::vector<StoredSetting> g_storedSettings = MakeStoredSettings();
+
+// Settings kept apart from ViewSettings. SettingGuid(17) was the scroll style of the test menu, which is gone,
+// and 27 a switch of a 0.9.2 build that was never released: they stay unused, so their saved values are not
+// read as another type.
 cfg_bool cfg_durationCountsDown(SettingGuid(15), false);
-cfg_bool cfg_pinHeaders(SettingGuid(16), kDefaults.pinHeaders);
-// SettingGuid(17) was the scroll style of the test menu, which is gone. Do not reuse it.
 const smooth_scroll::InertiaParams kDefaultInertia;
 cfg_float cfg_inertiaTau(SettingGuid(18), kDefaultInertia.tauMs);
 cfg_float cfg_inertiaDistance(SettingGuid(19), kDefaultInertia.distanceScale);
@@ -61,10 +94,6 @@ cfg_float cfg_inertiaStep(SettingGuid(21), kDefaultInertia.accelerationStep);
 cfg_float cfg_inertiaMax(SettingGuid(22), kDefaultInertia.maxAcceleration);
 cfg_string cfg_scrollPresetName(SettingGuid(23), kDefaultScrollPresetName);
 cfg_string cfg_userScrollPresets(SettingGuid(24), "");
-cfg_bool cfg_dragColumns(SettingGuid(25), kDefaults.dragColumns);
-cfg_bool cfg_showTrackSummary(SettingGuid(26), kDefaults.showTrackSummary);
-// 27 held a switch of a 0.9.2 build that was never released. It stays unused, so its saved value is not read as another type.
-cfg_int cfg_trackSummaryPlace(SettingGuid(28), static_cast<int>(kDefaults.trackSummaryPlace));
 
 // The numbers the panels scroll with: the saved ones until the Scrolling page changes them.
 std::optional<smooth_scroll::InertiaParams> g_liveInertia;
@@ -75,56 +104,15 @@ ViewSettings DefaultViewSettings() {
 	return kDefaults;
 }
 
+// In the order of the list, so a text colour is read before whether it is the user's own.
 ViewSettings LoadViewSettings() {
-	ViewSettings settings;
-	settings.smoothScroll = cfg_smoothScroll;
-	settings.customTrackFont = cfg_customTrackFont;
-	settings.trackFont = cfg_trackFont.get();
-	settings.customHeaderFont = cfg_customHeaderFont;
-	settings.headerFont = cfg_headerFont.get();
-	settings.headerColor = static_cast<COLORREF>(cfg_headerColor.get());
-	settings.labelColor = static_cast<COLORREF>(cfg_labelColor.get());
-	settings.customHeaderColor = UsesOwnTextColor(static_cast<int>(cfg_customHeaderColor.get()), settings.headerColor);
-	settings.customLabelColor = UsesOwnTextColor(static_cast<int>(cfg_customLabelColor.get()), settings.labelColor);
-	settings.customStarColor = cfg_customStarColor;
-	settings.starColor = static_cast<COLORREF>(cfg_starColor.get());
-	settings.rowPadding = ClampRowPadding(static_cast<int>(cfg_rowPadding.get()));
-	settings.coverSize = ClampCoverSize(static_cast<int>(cfg_coverSize.get()));
-	settings.presetPerPlaylist = cfg_presetPerPlaylist;
-	settings.dimBrackets = cfg_dimBrackets;
-	settings.showTrackSummary = cfg_showTrackSummary;
-	settings.trackSummaryPlace = TrackSummaryPlaceFrom(static_cast<int>(cfg_trackSummaryPlace.get()));
-	settings.sortOnHeaderClick = cfg_sortOnHeaderClick;
-	settings.dragColumns = cfg_dragColumns;
-	settings.scrollPerPlaylist = cfg_scrollPerPlaylist;
-	settings.boldPlaying = cfg_boldPlaying;
-	settings.pinHeaders = cfg_pinHeaders;
+	ViewSettings settings = kDefaults;
+	for (const StoredSetting& setting : g_storedSettings) setting.load(settings);
 	return settings;
 }
 
 void SaveViewSettings(const ViewSettings& settings) {
-	cfg_smoothScroll = settings.smoothScroll;
-	cfg_customTrackFont = settings.customTrackFont;
-	cfg_trackFont = settings.trackFont;
-	cfg_customHeaderFont = settings.customHeaderFont;
-	cfg_headerFont = settings.headerFont;
-	cfg_headerColor = static_cast<t_uint32>(settings.headerColor);
-	cfg_labelColor = static_cast<t_uint32>(settings.labelColor);
-	cfg_customHeaderColor = settings.customHeaderColor ? 1 : 0;
-	cfg_customLabelColor = settings.customLabelColor ? 1 : 0;
-	cfg_customStarColor = settings.customStarColor;
-	cfg_starColor = static_cast<t_uint32>(settings.starColor);
-	cfg_rowPadding = ClampRowPadding(settings.rowPadding);
-	cfg_coverSize = ClampCoverSize(settings.coverSize);
-	cfg_presetPerPlaylist = settings.presetPerPlaylist;
-	cfg_dimBrackets = settings.dimBrackets;
-	cfg_showTrackSummary = settings.showTrackSummary;
-	cfg_trackSummaryPlace = static_cast<int>(settings.trackSummaryPlace);
-	cfg_sortOnHeaderClick = settings.sortOnHeaderClick;
-	cfg_dragColumns = settings.dragColumns;
-	cfg_scrollPerPlaylist = settings.scrollPerPlaylist;
-	cfg_boldPlaying = settings.boldPlaying;
-	cfg_pinHeaders = settings.pinHeaders;
+	for (const StoredSetting& setting : g_storedSettings) setting.save(settings);
 }
 
 smooth_scroll::InertiaParams LoadInertiaParams() {

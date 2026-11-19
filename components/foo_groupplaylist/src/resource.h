@@ -73,6 +73,12 @@
 
 #define IDD_SCROLL_PAGE      104
 #define IDD_SORT_BY          105
+#define IDD_RATING_PAGE      106
+#define IDC_LIKE_STYLE_ACCENT       1601
+#define IDC_LIKE_STYLE_EMOJI        1602
+#define IDC_LIKE_COLOR_CUSTOM       1603
+#define IDC_LIKE_SWATCH             1604
+#define IDC_LIKE_COLOR              1605
 #define IDC_SORT_PATTERN     1501
 
 // One slider and one number box per smooth_scroll::InertiaParams value, in the order of kInertiaSettings.

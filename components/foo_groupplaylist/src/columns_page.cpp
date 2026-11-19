@@ -41,9 +41,11 @@ std::vector<std::string> SavedHiddenNames() {
 	return HiddenNames(BuiltInColumnDefsForMenu(LoadHiddenBuiltInColumns()));
 }
 
-// What the Pattern column of the list says. The Rating column has no pattern.
+// What the Pattern column of the list says. The Rating and Like columns have no pattern.
 std::string PatternText(const ColumnDef& def) {
-	return def.kind == ColumnKind::Rating ? Tr("(stars you click to rate)") : def.pattern;
+	if (def.kind == ColumnKind::Rating) return Tr("(stars you click to rate)");
+	if (def.kind == ColumnKind::Like) return Tr("(a heart you click to like)");
+	return def.pattern;
 }
 
 class ColumnsDialog : public CDialogImpl<ColumnsDialog>, public preferences_page_instance {
@@ -105,8 +107,6 @@ public:
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_DOWN, OnMove)
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_INSERT, OnInsertField)
 		COMMAND_ID_HANDLER_EX(IDC_COLUMN_SYNTAX, OnSyntaxHelp)
-		MSG_WM_DRAWITEM(OnDrawItem)
-		MSG_WM_SETCURSOR(OnSetCursor)
 	END_MSG_MAP()
 
 private:
@@ -172,6 +172,7 @@ private:
 	BOOL OnInitDialog(CWindow, LPARAM) {
 		m_dark.AddDialogWithControls(*this);
 		m_texts.Translate(*this);
+		AttachSyntaxLink(m_syntaxLink, GetDlgItem(IDC_COLUMN_SYNTAX), m_dark);
 		m_list.Attach(GetDlgItem(IDC_COLUMN_LIST), { { TrW("Name").c_str(), 28 }, { TrW("Pattern").c_str(), 46 }, { TrW("Kind").c_str(), 26 } });
 		CComboBox alignment(GetDlgItem(IDC_COLUMN_ALIGN));
 		for (const char* label : kAlignmentLabels) alignment.AddString(TrW(label).c_str());
@@ -201,10 +202,10 @@ private:
 		const int index = SelectedIndex();
 		const bool hasRow = index >= 0;
 		const bool custom = hasRow && !IsBuiltIn(index);
-		// Only text columns take a pattern: Duration draws the time played or left, and Rating's stars come from code.
-		// The stars are drawn from the left, so Rating keeps its alignment too.
+		// Only text columns take a pattern: Duration draws the time played or left, and the Rating and Like columns'
+		// stars and heart come from code, which also sets where they sit, so those two keep their alignment too.
 		const bool patternEditable = hasRow && m_rows[index].def.kind == ColumnKind::Text;
-		const bool alignmentEditable = hasRow && m_rows[index].def.kind != ColumnKind::Rating;
+		const bool alignmentEditable = hasRow && !IsClickColumn(m_rows[index].def.kind);
 		m_loadingFields = true;
 		uSetDlgItemText(m_hWnd, IDC_COLUMN_NAME, hasRow ? ColumnTitle(m_rows[index].def).c_str() : "");
 		uSetDlgItemText(m_hWnd, IDC_COLUMN_PATTERN, hasRow ? PatternText(m_rows[index].def).c_str() : "");
@@ -216,8 +217,8 @@ private:
 		GetDlgItem(IDC_COLUMN_ALIGN).EnableWindow(alignmentEditable);
 		GetDlgItem(IDC_COLUMN_DELETE).EnableWindow(custom);
 		GetDlgItem(IDC_COLUMN_RESTORE).EnableWindow(IsEditedRow(index));
-		// A copy of the Rating column would be an empty text column, because its stars come from code, not a pattern.
-		GetDlgItem(IDC_COLUMN_DUPLICATE).EnableWindow(hasRow && m_rows[index].def.kind != ColumnKind::Rating);
+		// A copy of the Rating or Like column would be an empty text column, because its look comes from code, not a pattern.
+		GetDlgItem(IDC_COLUMN_DUPLICATE).EnableWindow(hasRow && !IsClickColumn(m_rows[index].def.kind));
 		GetDlgItem(IDC_COLUMN_UP).EnableWindow(custom && index > static_cast<int>(m_builtInCount));
 		GetDlgItem(IDC_COLUMN_DOWN).EnableWindow(custom && index + 1 < static_cast<int>(m_rows.size()));
 		UpdatePreview();
@@ -228,7 +229,7 @@ private:
 		std::string text;
 		if (index >= 0) {
 			const ColumnDef& def = m_rows[index].def;
-			if (def.kind == ColumnKind::Rating) text = Tr("The main page sets where ratings are kept.");
+			if (IsClickColumn(def.kind)) text = Tr("The main page sets where ratings and likes are kept.");
 			else text = DescribePatternPreview(def.pattern.c_str());
 		}
 		uSetDlgItemText(m_hWnd, IDC_COLUMN_PREVIEW, text.c_str());
@@ -276,7 +277,7 @@ private:
 			m_list.SetText(index, 1, def.pattern);
 			UpdatePreview();
 		} else {
-			if (def.kind == ColumnKind::Rating) return;
+			if (IsClickColumn(def.kind)) return;
 			const int alignment = CComboBox(GetDlgItem(IDC_COLUMN_ALIGN)).GetCurSel();
 			if (alignment >= 0) def.alignment = static_cast<ColumnAlignment>(alignment);
 		}
@@ -315,7 +316,7 @@ private:
 
 	void OnDuplicate(UINT, int, CWindow) {
 		const int index = SelectedIndex();
-		if (index < 0 || m_rows[index].def.kind == ColumnKind::Rating) return;
+		if (index < 0 || IsClickColumn(m_rows[index].def.kind)) return;
 		ColumnDef copy = m_rows[index].def;
 		copy.name = UnusedName(ColumnTitle(copy) + Tr(" copy"));
 		copy.title.clear();
@@ -361,16 +362,6 @@ private:
 		standard_commands::main_titleformat_help();
 	}
 
-	void OnDrawItem(int id, LPDRAWITEMSTRUCT item) {
-		if (id == IDC_COLUMN_SYNTAX) DrawLinkButton(*item, m_hWnd);
-		else SetMsgHandled(FALSE);
-	}
-
-	BOOL OnSetCursor(CWindow window, UINT, UINT) {
-		if (SetLinkCursor(window, GetDlgItem(IDC_COLUMN_SYNTAX))) return TRUE;
-		SetMsgHandled(FALSE);
-		return FALSE;
-	}
 
 	// A bad name is shown and nothing is saved, so the user can fix it and press Apply again.
 	bool CheckNames() {
@@ -397,6 +388,7 @@ private:
 	// True while the page itself writes to the fields, so those writes are not read back as edits.
 	bool m_loadingFields = false;
 	fb2k::CDarkModeHooks m_dark;
+	DarkMode::CHyperLink m_syntaxLink;
 	DialogTexts m_texts;
 };
 

@@ -4,17 +4,20 @@
 
 A playlist view for foobar2000 64-bit. It groups the tracks of a playlist, for example by album, with the album art and an information column beside each group. Disc labels (`Disc 1`, `Disc 2`) can split a group further.
 
-![GroupPlaylist with the Album + Disc preset](screenshots/overview.png)
+![GroupPlaylist with the Album / Disc preset](screenshots/overview.png)
 
-*Four albums in the Album + Disc preset: one folder with one artist; a main folder with Disc 1 and Disc 2 subfolders; an album whose bonus tracks have a higher sample rate, so they get a cover block of their own; and an album with three artists, one cover block each.*
+*Four albums in the Album / Disc preset: one folder with one artist; a main folder with Disc 1 and Disc 2 subfolders; an album whose bonus tracks have a higher sample rate, so they get a cover block of their own; and an album with three artists, one cover block each.*
 
 GroupPlaylist is a 64-bit alternative to SimPlaylist. It is a new program written from scratch and is not affiliated with the author of SimPlaylist.
 
-- Groups and labels made from title formatting patterns, with ready-made presets (Album, Album + Disc, Artist / Cover / Album and others), or no grouping at all
-- 22 built-in columns plus your own columns
-- Star ratings you click, kept in the file tags or in Playback Statistics
+- Groups and labels made from title formatting patterns, with ready-made presets (Album, Album / Disc, Artist / Cover / Album and others), or no grouping at all
+- 23 built-in columns plus your own columns
+- Star ratings you click, and play counts with first and last played dates, kept by GroupPlaylist itself, with no other component needed (ratings can go in the file tags too)
+- Likes: a heart you click in the Like column, or **GroupPlaylist > Like** in any track menu
+- Ready-made autoplaylists in the Library menu: played more than 10 times, played in the last year, never played, liked tracks
 - Smooth scrolling that glides like a flicked list, with presets you can fine-tune
 - Follows the Default UI colours, fonts and dark mode
+- Colour emoji in titles and tags; album art in WebP and any other format Windows can open, with transparency kept
 - Settings export and import, for a backup or another computer
 - English and Korean
 
@@ -38,7 +41,6 @@ The albums in the screenshots are made up: `tools\make-screenshot-tracks.ps1` wr
 
 - foobar2000 v2.0 or newer, **64-bit**. Tested with foobar2000 v2.26.3 on Windows 11, at 100% and 150% display scaling.
 - Default User Interface. Columns UI is not supported.
-- Optional: the official [Playback Statistics](https://www.foobar2000.org/components/view/foo_playcount) component (`foo_playcount`), to keep ratings in its database instead of the file tags.
 
 ## Install
 
@@ -86,20 +88,57 @@ Other things you can do in the panel:
 
 ## Settings
 
-Open **File > Preferences > Tools > GroupPlaylist**. A change on this page shows in the panels at once, so you can try it out. **Apply** or **OK** saves it, and **Cancel** puts the saved settings back. **Language** and **Rating** change only on **Apply**.
+Open **File > Preferences > Tools > GroupPlaylist**. A change on this page shows in the panels at once, so you can try it out. **Apply** or **OK** saves it, and **Cancel** puts the saved settings back. **Language** changes only on **Apply**.
 
 - **Fonts**: your own fonts for the tracks and for the group headers. Without them the panel uses the Default UI playlist font.
 - **Colours and sizes**: the group header and label text follow foobar2000's highlight colour (Default UI colours) unless you tick **Own header colour** or **Own label colour** and pick one; extra row height, album art size.
-- **Rating**: where a click on the stars saves the rating: **File tags**, **Playback Statistics**, or **Both**. The last two need the separate Playback Statistics component (`foo_playcount`). Without it they are greyed out and marked "(needs Playback Statistics)". Filled stars take foobar2000's highlight colour too, or a colour of your own with **Own star colour**.
 - **Language**: **Automatic** follows the Windows display language (Korean on Korean Windows, English otherwise). **English** and **한국어** choose one. After **Apply** the panel and the page change at once. Reopen Preferences to see the page names in the new language.
 - **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, drag column titles to reorder the columns, dim text in brackets such as `(Remastered)`, show the playing track in bold, and show the track count and length on group headers, on label rows or on both (it can also be turned off).
 - **Settings file**: **Export settings...** saves every GroupPlaylist setting to a text file, and **Import settings...** loads one, for a backup or another computer. Per-playlist presets and scroll positions, ratings, and each panel's column layout are not in the file.
 
-Three pages sit below it:
+Four pages sit below it:
 
 - **Columns**: the built-in columns and your own columns. A built-in column cannot be removed, but you can change its name, pattern and alignment, choose whether it appears in the menu, and put it back with **Restore default**. A column's text is a [title formatting](https://wiki.hydrogenaud.io/index.php?title=Foobar2000:Title_Formatting_Reference) pattern. **Insert field** adds common fields, and the preview shows the result for the focused track.
+- **Ratings and likes**: where ratings and likes are saved: **File tags** (the RATING and LOVED tags), **GroupPlaylist store** (the default; the files are left alone, see [Ratings, likes and play history](#ratings-likes-and-play-history)), or **Both**; this changes on **Apply**. Filled stars take foobar2000's highlight colour, or a colour of your own with **Own star colour**. The hearts of the Like column are drawn as **Colour emoji** ❤️ (the default) or **In the star colour** (or a colour of your own with **Own heart colour**).
 - **Groups**: the presets. Each preset has a pattern for the group header, for the cover (tracks with the same value share one cover), for the labels inside a group (one per line), and for its sort order.
 - **Scrolling**: pinned group headers and smooth scrolling (the same switches as in the panel menu), and how the wheel glides: **Default**, **Light** (stops at once, hardly speeds up), **Heavy** (glides long, speeds up a lot when you spin the wheel), or your own sets, made from five numbers. A change shows at once while you scroll; **Apply** keeps it. Once you change a number, the preset list shows **Custom (unsaved)** and offers an unused name such as "Custom preset 1"; **Save as new** keeps the numbers as a preset of their own, and **Overwrite** saves them into your preset they started from.
+
+## Ratings, likes and play history
+
+GroupPlaylist keeps ratings, likes and play history in its own store inside the foobar2000 profile, so the music files are left alone and no other component is needed.
+
+- A track counts as played when foobar2000 says so: after 60 seconds, or at its end when at least a third of it was heard.
+- A track is known by its artist, album and title, so its history stays when the file is moved or renamed. Tracks with the same artist, album and title share it. A track without a title tag is known by its path.
+- The **added** date is set when a track comes into the Media Library. Tracks already in the library get the day GroupPlaylist first started.
+- A like is a heart: click it in the **Like** column (shown in a new panel, and in the Columns menu), or use **GroupPlaylist > Like** and **Unlike** in the track menu of any playlist or library view, for several tracks at once. A like is separate from the rating.
+- Ratings and likes already in the files (the RATING and LOVED tags) show until you change them in GroupPlaylist. After that the store's choice counts, even when you take the rating or the like away. If you used an earlier GroupPlaylist that kept ratings in file tags, it goes on keeping them there; the **Ratings and likes** page changes it.
+
+The values can be used anywhere in foobar2000 (other columns, searches, autoplaylists, other components):
+
+| Field | Value |
+|---|---|
+| `%gp_rating%` | rating, 1 to 5 |
+| `%gp_play_count%` | number of plays |
+| `%gp_first_played%`, `%gp_last_played%` | first and last played, as `YYYY-MM-DD hh:mm:ss` |
+| `%gp_added%` | when the track came into the Media Library |
+| `%gp_liked%` | 1 when the track is liked |
+| `%gp_liked_date%` | when the track was liked; none for tracks liked before GroupPlaylist kept the date |
+
+When the Playback Statistics component (`foo_playcount`) is not installed, the first five values also answer to its field names, `%rating%`, `%play_count%`, `%first_played%`, `%last_played%` and `%added%`, so patterns and skins written for it keep working. Where the store has no value, these names show the file's tag of the same name, as they would without GroupPlaylist.
+
+**Library > GroupPlaylist** makes four autoplaylists. Each comes in its own order: the most played first, the most recently played first, album order, and the most recently liked first (tracks liked before GroupPlaylist kept the date come last, in album order). While **Remember a preset per playlist** is on, the three lists sorted by count or date are shown with the **Artist / Cover** preset, which suits them: nearly every track starts a group, like a viewing history.
+
+You can make your own in **Library > Search** with queries such as:
+
+| Autoplaylist | Query |
+|---|---|
+| Played more than 10 times | `%gp_play_count% GREATER 10` |
+| Played in the last year | `%gp_last_played% DURING LAST 52 WEEKS` |
+| Never played | `%gp_play_count% MISSING` |
+| Liked tracks | `%gp_liked% IS 1` |
+| Rated 4 stars or more | `%gp_rating% GREATER 3` |
+
+An autoplaylist updates when tracks change. A query on dates, such as the last year, is worked out again then or when foobar2000 starts, so a track can stay in it a little past the date until something changes.
 
 ## Known limitations
 
@@ -110,7 +149,7 @@ Three pages sit below it:
 
 GroupPlaylist is released under the [MIT License](../../LICENSE).
 
-It is built with the foobar2000 SDK (Peter Pawlowski) and the Windows Template Library (Microsoft, WTL Team), and its smooth scrolling is adapted from [ui_helpers](https://github.com/reupen/ui_helpers) (Reupen Shah, BSD 3-Clause). Their licenses are in [THIRD-PARTY-NOTICES.txt](../../THIRD-PARTY-NOTICES.txt), which also ships inside the component file.
+It is built with the foobar2000 SDK (Peter Pawlowski) and the Windows Template Library (Microsoft, WTL Team), and its smooth scrolling and its DirectWrite text drawing (with colour emoji) are adapted from [ui_helpers](https://github.com/reupen/ui_helpers) (Reupen Shah, BSD 3-Clause). Their licenses are in [THIRD-PARTY-NOTICES.txt](../../THIRD-PARTY-NOTICES.txt), which also ships inside the component file.
 
 ## Building from source
 

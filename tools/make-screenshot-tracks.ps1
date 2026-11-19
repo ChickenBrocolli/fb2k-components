@@ -7,7 +7,7 @@
 #   C  Northern Suite    one album whose bonus tracks have a higher sample rate
 #   D  Late Night Radio  one album with tracks by three artists
 #
-# Then, from PowerShell: & foobar2000_x64\foobar2000.exe /add testdata\screenshots
+# Then, from PowerShell: & foobar2000_x64_test\foobar2000.exe /add testdata\screenshots
 
 param([string] $OutDir = (Join-Path (Split-Path -Parent $PSScriptRoot) 'testdata\screenshots'))
 

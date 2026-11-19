@@ -1,4 +1,5 @@
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "check.h"
@@ -49,22 +50,34 @@ void AMalformedPresetLineIsSkippedAndTheRestIsKept() {
 
 void APresetIsFoundByNameWhateverTheLetterCase() {
 	const std::vector<GroupPreset> presets = DefaultGroupPresets();
-	const std::optional<size_t> found = FindPresetByName(presets, "album + disc");
+	const std::optional<size_t> found = FindPresetByName(presets, "album / disc");
 	CHECK(found.has_value());
-	if (found) CHECK(presets[*found].name == "Album + Disc");
-	CHECK(!FindPresetByName(presets, "Album + Dis").has_value());
+	if (found) CHECK(presets[*found].name == "Album / Disc");
+	CHECK(!FindPresetByName(presets, "Album / Dis").has_value());
 	CHECK(!FindPresetByName(presets, "No such preset").has_value());
 }
 
-// Panels saved before the names were capitalized hold these spellings.
+// Panels saved before the names were capitalized, or before "Album + Disc" became "Album / Disc", hold these.
 void EveryOldPresetNameStillFindsItsPreset() {
 	const std::vector<GroupPreset> presets = DefaultGroupPresets();
-	const char* const oldNames[] = { "Artist - album / cover", "Artist / cover + album info", "Artist / cover / album", "album", "album + disc" };
-	for (size_t index = 0; index < std::size(oldNames); ++index) {
-		const std::optional<size_t> found = FindPresetByName(presets, oldNames[index]);
+	const std::pair<const char*, const char*> oldNames[] = {
+		{ "Artist - album / cover", "Artist - Album / Cover" }, { "Artist / cover + album info", "Artist / Cover + Album Info" },
+		{ "Artist / cover / album", "Artist / Cover / Album" }, { "album", "Album" }, { "album + disc", "Album / Disc" },
+	};
+	for (const auto& [oldName, name] : oldNames) {
+		const std::optional<size_t> found = FindPresetByName(presets, oldName);
 		CHECK(found.has_value());
-		if (found) CHECK(*found == index);
+		if (found) CHECK(presets[*found].name == name);
 	}
+}
+
+// Artist first, then album; each from the most detailed to the plainest.
+void TheDefaultPresetsRunFromArtistToAlbum() {
+	std::vector<std::string> names;
+	for (const GroupPreset& preset : DefaultGroupPresets()) names.push_back(preset.name);
+	CHECK((names == std::vector<std::string>{ "Artist / Cover / Album", "Artist / Cover + Album Info", "Artist - Album / Cover",
+		"Artist / Cover", "Album / Disc", "Album" }));
+	CHECK(FindPresetByName(DefaultGroupPresets(), kArtistCoverPresetName).has_value());
 }
 
 std::vector<GroupPreset> Named(const std::vector<std::string>& names) {
@@ -136,6 +149,7 @@ void RunGroupPresetTests() {
 	AMalformedPresetLineIsSkippedAndTheRestIsKept();
 	APresetIsFoundByNameWhateverTheLetterCase();
 	EveryOldPresetNameStillFindsItsPreset();
+	TheDefaultPresetsRunFromArtistToAlbum();
 	DistinctPresetNamesPassTheNameCheck();
 	AnEmptyOrBlankPresetNameIsReported();
 	PresetNamesThatDifferOnlyInLetterCaseAreDuplicates();

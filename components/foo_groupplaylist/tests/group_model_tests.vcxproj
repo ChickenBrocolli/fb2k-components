@@ -47,13 +47,16 @@
     <ClCompile Include="group_model_tests.cpp" />
     <ClCompile Include="group_preset_tests.cpp" />
     <ClCompile Include="header_sort_tests.cpp" />
+    <ClCompile Include="label_fit_tests.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="rating_cell_tests.cpp" />
     <ClCompile Include="selection_order_tests.cpp" />
     <ClCompile Include="settings_tests.cpp" />
     <ClCompile Include="smooth_scroll_tests.cpp" />
     <ClCompile Include="text_parts_tests.cpp" />
+    <ClCompile Include="track_record_tests.cpp" />
     <ClCompile Include="ui_text_tests.cpp" />
+    <ClCompile Include="view_settings_fields_tests.cpp" />
     <ClCompile Include="view_settings_tests.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

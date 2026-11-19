@@ -124,8 +124,6 @@ public:
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_UP, OnMove)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_DOWN, OnMove)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_SYNTAX, OnSyntaxHelp)
-		MSG_WM_DRAWITEM(OnDrawItem)
-		MSG_WM_SETCURSOR(OnSetCursor)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_HEADER_INSERT, OnInsertField)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_COVER_INSERT, OnInsertField)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_SUBGROUP_INSERT, OnInsertField)
@@ -162,6 +160,7 @@ private:
 	BOOL OnInitDialog(CWindow, LPARAM) {
 		m_dark.AddDialogWithControls(*this);
 		m_texts.Translate(*this);
+		AttachSyntaxLink(m_syntaxLink, GetDlgItem(IDC_PRESET_SYNTAX), m_dark);
 		m_list.Attach(GetDlgItem(IDC_PRESET_LIST), { { TrW("Name").c_str(), 40 }, { TrW("Group header").c_str(), 60 } });
 		FillList(m_initialIndex);
 		return FALSE;
@@ -338,16 +337,6 @@ private:
 		standard_commands::main_titleformat_help();
 	}
 
-	void OnDrawItem(int id, LPDRAWITEMSTRUCT item) {
-		if (id == IDC_PRESET_SYNTAX) DrawLinkButton(*item, m_hWnd);
-		else SetMsgHandled(FALSE);
-	}
-
-	BOOL OnSetCursor(CWindow window, UINT, UINT) {
-		if (SetLinkCursor(window, GetDlgItem(IDC_PRESET_SYNTAX))) return TRUE;
-		SetMsgHandled(FALSE);
-		return FALSE;
-	}
 
 	// A bad name is shown and nothing is saved, so the user can fix it and press Apply again.
 	bool CheckNames() {
@@ -374,6 +363,7 @@ private:
 	// True while the page itself writes to the fields, so those writes are not read back as edits.
 	bool m_loadingFields = false;
 	fb2k::CDarkModeHooks m_dark;
+	DarkMode::CHyperLink m_syntaxLink;
 	DialogTexts m_texts;
 };
 

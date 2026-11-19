@@ -25,6 +25,18 @@ inline bool UsesOwnTextColor(int saved, std::uint32_t savedColor) {
 // Where group headers and label rows show their track count and length, when that is on.
 // The order follows the drop-down list on the Preferences page and the number in a settings file.
 enum class TrackSummaryPlace { HeadersAndLabels, Headers, Labels };
+
+// How the Like column draws a liked track: a heart in the star colour (or its own colour), or the red heart emoji.
+// A track not liked shows a faded outline heart either way.
+enum class LikeStyle { StarColour = 0, Emoji = 1 };
+constexpr int kLikeStyleCount = 2;
+
+inline LikeStyle LikeStyleFrom(int number) {
+	return number == 1 ? LikeStyle::Emoji : LikeStyle::StarColour;
+}
+
+// The heart colour offered first when the user turns on their own: the red most players use.
+constexpr std::uint32_t kHeartRedColor = 0x004628DC;
 constexpr int kTrackSummaryPlaceCount = 3;
 
 inline bool ShowsHeaderSummary(bool on, TrackSummaryPlace place) {

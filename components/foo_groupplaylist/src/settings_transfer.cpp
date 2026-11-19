@@ -15,6 +15,7 @@
 #include "settings_file.h"
 #include "ui_language.h"
 #include "view_settings.h"
+#include "view_settings_fields.h"
 
 namespace {
 
@@ -38,31 +39,6 @@ std::string JoinLines(const std::vector<std::string>& lines) {
 	return text;
 }
 
-std::string Utf8(const wchar_t* text) {
-	return pfc::stringcvt::string_utf8_from_wide(text).get_ptr();
-}
-
-// A font as face, height at 96 DPI, weight and italic, separated by tabs.
-std::string FontText(const LOGFONTW& font) {
-	std::string line = JoinFieldLine({ Utf8(font.lfFaceName), std::to_string(font.lfHeight), std::to_string(font.lfWeight), font.lfItalic ? "1" : "0" });
-	line.pop_back();  // the line break
-	return line;
-}
-
-std::optional<LOGFONTW> ParseFont(const std::string& text, LOGFONTW font) {
-	const std::vector<std::vector<std::string>> lines = SplitFieldLines(text);
-	if (lines.empty() || lines[0].size() < 4 || lines[0][0].empty()) return std::nullopt;
-	const std::vector<std::string>& fields = lines[0];
-	const std::optional<long long> height = ParseSettingInt(fields[1]);
-	const std::optional<long long> weight = ParseSettingInt(fields[2]);
-	if (!height || !weight || *height == 0 || std::abs(*height) > 200 || *weight < 0 || *weight > 1000) return std::nullopt;
-	wcsncpy_s(font.lfFaceName, pfc::stringcvt::string_wide_from_utf8(fields[0].c_str()).get_ptr(), _TRUNCATE);
-	font.lfHeight = static_cast<LONG>(*height);
-	font.lfWeight = static_cast<LONG>(*weight);
-	font.lfItalic = fields[3] == "1" ? TRUE : FALSE;
-	return font;
-}
-
 class Reader {
 public:
 	explicit Reader(const SettingsEntries& entries) : m_entries(entries) {}
@@ -75,16 +51,6 @@ public:
 	void Int(const char* key, int& field, int minimum, int maximum) const {
 		if (const auto text = SettingValue(m_entries, key)) {
 			if (const auto value = ParseSettingInt(*text)) field = static_cast<int>(std::clamp<long long>(*value, minimum, maximum));
-		}
-	}
-	void Color(const char* key, COLORREF& field) const {
-		if (const auto text = SettingValue(m_entries, key)) {
-			if (const auto value = ParseSettingColor(*text)) field = static_cast<COLORREF>(*value);
-		}
-	}
-	void Font(const char* key, LOGFONTW& field) const {
-		if (const auto text = SettingValue(m_entries, key)) {
-			if (const auto value = ParseFont(*text, field)) field = *value;
 		}
 	}
 	void Number(const char* key, double& field) const {
@@ -105,33 +71,14 @@ std::string ExportSettingsText() {
 	const ViewSettings view = LoadViewSettings();
 	SettingsWriter out;
 	out.Comment("Look and behaviour");
-	out.AddBool("customTrackFont", view.customTrackFont);
-	out.Add("trackFont", FontText(view.trackFont));
-	out.AddBool("customHeaderFont", view.customHeaderFont);
-	out.Add("headerFont", FontText(view.headerFont));
-	out.Add("headerColor", FormatSettingColor(view.headerColor));
-	out.Add("labelColor", FormatSettingColor(view.labelColor));
-	out.AddBool("customHeaderColor", view.customHeaderColor);
-	out.AddBool("customLabelColor", view.customLabelColor);
-	out.AddBool("customStarColor", view.customStarColor);
-	out.Add("starColor", FormatSettingColor(view.starColor));
-	out.AddInt("rowPadding", view.rowPadding);
-	out.AddInt("coverSize", view.coverSize);
+	WriteViewSettings(out, view, SettingsPage::Main);
+	WriteViewSettings(out, view, SettingsPage::Ratings);
 	out.AddInt("ratingStorage", static_cast<int>(GetRatingStorage()));
 	out.AddInt("language", static_cast<int>(GetUiLanguage()));
-	out.AddBool("presetPerPlaylist", view.presetPerPlaylist);
-	out.AddBool("scrollPerPlaylist", view.scrollPerPlaylist);
-	out.AddBool("sortOnHeaderClick", view.sortOnHeaderClick);
-	out.AddBool("dragColumns", view.dragColumns);
-	out.AddBool("dimBrackets", view.dimBrackets);
-	out.AddBool("showTrackSummary", view.showTrackSummary);
-	out.AddInt("trackSummaryPlace", static_cast<int>(view.trackSummaryPlace));
-	out.AddBool("boldPlaying", view.boldPlaying);
 	out.AddBool("durationCountsDown", GetDurationCountsDown());
 
 	out.Comment("Scrolling");
-	out.AddBool("pinHeaders", view.pinHeaders);
-	out.AddBool("smoothScroll", view.smoothScroll);
+	WriteViewSettings(out, view, SettingsPage::Scrolling);
 	const smooth_scroll::InertiaParams params = LoadInertiaParams();
 	for (size_t index = 0; index < std::size(kInertiaSettings); ++index) {
 		out.Add(kInertiaKeys[index], FormatSettingNumber(params.*kInertiaSettings[index].field));
@@ -162,33 +109,7 @@ bool ImportSettingsText(const std::string& text) {
 	const Reader in(*entries);
 
 	ViewSettings view = LoadViewSettings();
-	in.Bool("customTrackFont", view.customTrackFont);
-	in.Font("trackFont", view.trackFont);
-	in.Bool("customHeaderFont", view.customHeaderFont);
-	in.Font("headerFont", view.headerFont);
-	in.Color("headerColor", view.headerColor);
-	in.Color("labelColor", view.labelColor);
-	// A file from before 0.9.2 has the colours but not whether they are the user's own; the upgrade rule decides.
-	if (!in.Text("customHeaderColor") && in.Text("headerColor")) view.customHeaderColor = UsesOwnTextColor(-1, view.headerColor);
-	else in.Bool("customHeaderColor", view.customHeaderColor);
-	if (!in.Text("customLabelColor") && in.Text("labelColor")) view.customLabelColor = UsesOwnTextColor(-1, view.labelColor);
-	else in.Bool("customLabelColor", view.customLabelColor);
-	in.Bool("customStarColor", view.customStarColor);
-	in.Color("starColor", view.starColor);
-	in.Int("rowPadding", view.rowPadding, kMinRowPadding, kMaxRowPadding);
-	in.Int("coverSize", view.coverSize, kMinCoverSize, kMaxCoverSize);
-	in.Bool("presetPerPlaylist", view.presetPerPlaylist);
-	in.Bool("scrollPerPlaylist", view.scrollPerPlaylist);
-	in.Bool("sortOnHeaderClick", view.sortOnHeaderClick);
-	in.Bool("dragColumns", view.dragColumns);
-	in.Bool("dimBrackets", view.dimBrackets);
-	in.Bool("showTrackSummary", view.showTrackSummary);
-	int summaryPlace = static_cast<int>(view.trackSummaryPlace);
-	in.Int("trackSummaryPlace", summaryPlace, 0, kTrackSummaryPlaceCount - 1);
-	view.trackSummaryPlace = TrackSummaryPlaceFrom(summaryPlace);
-	in.Bool("boldPlaying", view.boldPlaying);
-	in.Bool("pinHeaders", view.pinHeaders);
-	in.Bool("smoothScroll", view.smoothScroll);
+	ReadViewSettings(*entries, view);
 
 	bool countsDown = GetDurationCountsDown();
 	in.Bool("durationCountsDown", countsDown);
