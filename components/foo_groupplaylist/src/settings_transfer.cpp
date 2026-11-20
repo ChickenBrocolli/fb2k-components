@@ -48,10 +48,15 @@ public:
 			if (const auto value = ParseSettingBool(*text)) field = *value;
 		}
 	}
-	void Int(const char* key, int& field, int minimum, int maximum) const {
+	// True when the file has a number for the key.
+	bool Int(const char* key, int& field, int minimum, int maximum) const {
 		if (const auto text = SettingValue(m_entries, key)) {
-			if (const auto value = ParseSettingInt(*text)) field = static_cast<int>(std::clamp<long long>(*value, minimum, maximum));
+			if (const auto value = ParseSettingInt(*text)) {
+				field = static_cast<int>(std::clamp<long long>(*value, minimum, maximum));
+				return true;
+			}
 		}
+		return false;
 	}
 	void Number(const char* key, double& field) const {
 		if (const auto text = SettingValue(m_entries, key)) {
@@ -74,6 +79,7 @@ std::string ExportSettingsText() {
 	WriteViewSettings(out, view, SettingsPage::Main);
 	WriteViewSettings(out, view, SettingsPage::Ratings);
 	out.AddInt("ratingStorage", static_cast<int>(GetRatingStorage()));
+	out.AddInt("likeStorage", static_cast<int>(GetLikeStorage()));
 	out.AddInt("language", static_cast<int>(GetUiLanguage()));
 	out.AddBool("durationCountsDown", GetDurationCountsDown());
 
@@ -93,6 +99,8 @@ std::string ExportSettingsText() {
 	out.AddList("customColumns", "column", Lines(SerializeColumnDefs(LoadCustomColumnDefs())));
 	out.Comment("Changed built-in columns: name, shown name (empty keeps the built-in one), pattern, alignment");
 	out.AddList("builtInColumnEdits", "builtInColumnEdit", Lines(SerializeBuiltInEdits(LoadBuiltInColumnEdits())));
+	out.Comment("The order of the columns on the Columns page and in the Columns menu: one name per line");
+	out.AddList("columnOrder", "columnName", Lines(SerializeColumnNames(LoadColumnOrder())));
 
 	out.Comment("Group presets: name, sort, header, cover, flags, labels");
 	out.AddList("groupPresets", "groupPreset", Lines(SerializePresets(LoadGroupPresets())));
@@ -129,6 +137,8 @@ bool ImportSettingsText(const std::string& text) {
 	const auto hidden = in.Text("hiddenBuiltInColumns");
 	const auto columns = in.List("customColumns", "column");
 	const auto builtInEdits = in.List("builtInColumnEdits", "builtInColumnEdit");
+	const auto columnOrder = in.List("columnOrder", "columnName");
+	if (columnOrder) SaveColumnOrder(ParseColumnNames(JoinLines(*columnOrder)));
 	// Kept as the Columns page would save them: lines for unknown columns, repeats and unchanged columns drop out.
 	if (builtInEdits) {
 		const std::vector<ColumnDef> edited = ApplyBuiltInEdits(BuiltInColumnDefs(), ParseBuiltInEdits(JoinLines(*builtInEdits)));
@@ -143,7 +153,7 @@ bool ImportSettingsText(const std::string& text) {
 		}
 		SaveHiddenBuiltInColumns(names);
 	}
-	if (hidden || columns || builtInEdits) {
+	if (hidden || columns || builtInEdits || columnOrder) {
 		std::vector<ColumnDef> custom = columns ? std::vector<ColumnDef>() : LoadCustomColumnDefs();
 		if (columns) {
 			std::vector<std::string> taken;
@@ -166,9 +176,17 @@ bool ImportSettingsText(const std::string& text) {
 		if (!presets.empty()) PlaylistView::ApplyGroupPresets(presets, {});
 	}
 
+	// A file from before likes had a choice of their own names only ratingStorage, which then set both: the likes
+	// go where that file's choice sent them.
 	int rating = static_cast<int>(GetRatingStorage());
-	in.Int("ratingStorage", rating, 0, 2);
-	if (static_cast<RatingStorage>(rating) != GetRatingStorage()) PlaylistView::ApplyRatingStorage(static_cast<RatingStorage>(rating));
+	const bool ratingRead = in.Int("ratingStorage", rating, 0, 2);
+	const RatingStorage ratings = static_cast<RatingStorage>(rating);
+	int like = static_cast<int>(GetLikeStorage());
+	if (!in.Int("likeStorage", like, 0, 2) && ratingRead) {
+		like = static_cast<int>(ratings == RatingStorage::FileTags ? LikeStorage::FileTags : ratings == RatingStorage::Both ? LikeStorage::Both : LikeStorage::Store);
+	}
+	const LikeStorage likes = static_cast<LikeStorage>(like);
+	if (ratings != GetRatingStorage() || likes != GetLikeStorage()) PlaylistView::ApplyRatingStorage(ratings, likes);
 
 	// Last, so the panels redraw with everything above, in the new language.
 	PlaylistView::ApplyViewSettings(view);

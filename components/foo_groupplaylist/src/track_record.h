@@ -5,26 +5,29 @@
 #include <optional>
 #include <vector>
 
-// What GroupPlaylist keeps about one track in its own store (track_store.h), in place of the Playback Statistics
-// component. Times are Windows file times (100-nanosecond steps since 1601), 0 when there is none.
+// What GroupPlaylist keeps about one track in its own store (track_store.h): whether it is liked. Ratings and play
+// history are the Playback Statistics component's. Times are Windows file times (100-nanosecond steps since 1601),
+// 0 when there is none.
 struct TrackRecord {
-	uint32_t rating = 0;  // 0 for none, else 1 to 5
+	// What 0.10.0 kept here in place of Playback Statistics. No longer filled or shown; the fields stay so that
+	// saved records read and write as before.
+	uint32_t rating = 0;
 	uint32_t playCount = 0;
 	uint64_t firstPlayed = 0;
 	uint64_t lastPlayed = 0;
 	uint64_t added = 0;
+	bool ratingSet = false;
+
 	uint32_t liked = 0;  // 1 when the track is liked (version 2)
 	uint64_t likedAt = 0;  // when it was liked, 0 when not liked or liked before version 3
-	// Set when the rating or the like was given or taken away in GroupPlaylist (version 4). Then the store's value
-	// stands even when it is "none", and the file's RATING or LOVED tag no longer shows in its place.
-	bool ratingSet = false;
+	// Set when the like was given or taken away in GroupPlaylist (version 4). Then the store's value stands even
+	// when it is "not liked", and the file's LOVED tag no longer shows in its place.
 	bool likeSet = false;
 
 	bool operator==(const TrackRecord&) const = default;
 	bool IsEmpty() const { return *this == TrackRecord{}; }
 
-	// Whether the store decides the rating or the like. A record saved before version 4 decides only when it has one.
-	bool RatingDecided() const { return ratingSet || rating != 0; }
+	// Whether the store decides the like. A record saved before version 4 decides only when it is liked.
 	bool LikeDecided() const { return likeSet || liked != 0; }
 };
 
@@ -101,21 +104,6 @@ inline std::optional<TrackRecord> ParseTrackRecord(const uint8_t* data, size_t s
 		record.likeSet = (flags & 2) != 0;
 	}
 	return record;
-}
-
-// Counts one play on the record at the given time. foobar2000 decides what counts as a play (playback_history.cpp).
-inline void CountPlay(TrackRecord& record, uint64_t now) {
-	++record.playCount;
-	record.lastPlayed = now;
-	if (record.firstPlayed == 0) record.firstPlayed = now;
-}
-
-// Rates the track, 1 to 5, or takes the rating away with 0, and reports whether that changed the record.
-inline bool SetRating(TrackRecord& record, uint32_t rating) {
-	if (record.ratingSet && record.rating == rating) return false;
-	record.rating = rating;
-	record.ratingSet = true;
-	return true;
 }
 
 // Likes or unlikes the track at the given time, and reports whether that changed the record. Liking an already liked

@@ -16,22 +16,34 @@
 
 namespace {
 
-// The page's part of the view settings (SettingsPage::Ratings), and where ratings and likes are kept.
+// The page's part of the view settings (SettingsPage::Ratings), and where ratings and where likes are kept.
 struct RatingValues {
-	RatingStorage storage = RatingStorage::Store;
+	RatingStorage storage = RatingStorage::Statistics;
+	LikeStorage likes = LikeStorage::Store;
 	ViewSettings view;
 
 	bool operator==(const RatingValues& other) const {
-		return storage == other.storage && SameSettings(view, other.view, SettingsPage::Ratings);
+		return storage == other.storage && likes == other.likes && SameSettings(view, other.view, SettingsPage::Ratings);
 	}
 
-	static RatingValues From(const ViewSettings& view, RatingStorage storage) { return { storage, view }; }
+	static RatingValues From(const ViewSettings& view, RatingStorage storage, LikeStorage likes) { return { storage, likes, view }; }
 
 	void CopyTo(ViewSettings& to) const { CopySettings(view, to, SettingsPage::Ratings); }
 };
 
+// The rating choices in the order the list shows them, the same order as the like choices. The saved numbers of
+// RatingStorage stay as they were, so only the list's order differs from them.
+constexpr RatingStorage kRatingChoices[] = { RatingStorage::Statistics, RatingStorage::FileTags, RatingStorage::Both };
+
+int RatingChoiceOf(RatingStorage storage) {
+	for (int index = 0; index < static_cast<int>(std::size(kRatingChoices)); ++index) {
+		if (kRatingChoices[index] == storage) return index;
+	}
+	return 0;
+}
+
 RatingValues SavedRatingValues() {
-	return RatingValues::From(LoadViewSettings(), GetRatingStorage());
+	return RatingValues::From(LoadViewSettings(), GetRatingStorage(), GetLikeStorage());
 }
 
 COLORREF FoobarHighlightColor() {
@@ -68,7 +80,7 @@ public:
 
 	// Only this page's part is saved; the other pages' unapplied edits stay unapplied and still show.
 	void apply() override {
-		if (m_values.storage != GetRatingStorage()) PlaylistView::ApplyRatingStorage(m_values.storage);
+		if (m_values.storage != GetRatingStorage() || m_values.likes != GetLikeStorage()) PlaylistView::ApplyRatingStorage(m_values.storage, m_values.likes);
 		ViewSettings view = LoadViewSettings();
 		m_values.CopyTo(view);
 		PlaylistView::ApplyViewSettings(view);
@@ -76,7 +88,7 @@ public:
 	}
 
 	void reset() override {
-		RatingValues defaults = RatingValues::From(DefaultViewSettings(), RatingStorage::Store);
+		RatingValues defaults = RatingValues::From(DefaultViewSettings(), RatingStorage::Statistics, LikeStorage::Store);
 		m_values = defaults;
 		ShowValues();
 		ShowPreferencesPreview();
@@ -88,6 +100,7 @@ public:
 		MSG_WM_DESTROY(OnDestroy)
 		MSG_WM_DRAWITEM(OnDrawItem)
 		COMMAND_HANDLER_EX(IDC_PREF_RATING, CBN_SELCHANGE, OnStorageChanged)
+		COMMAND_HANDLER_EX(IDC_PREF_LIKE_STORAGE, CBN_SELCHANGE, OnStorageChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_STAR_COLOR_CUSTOM, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_LIKE_COLOR_CUSTOM, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_LIKE_STYLE_ACCENT, OnCheckChanged)
@@ -100,11 +113,17 @@ private:
 	BOOL OnInitDialog(CWindow, LPARAM) {
 		m_dark.AddDialogWithControls(*this);
 		m_texts.Translate(*this);
-		// The order follows RatingStorage.
+		// The order of kRatingChoices: the store first, then file tags, then both, as for likes. Without Playback
+		// Statistics ratings use the file tags whatever is picked (rating_store.h), and the first choice says why.
 		CComboBox storage(GetDlgItem(IDC_PREF_RATING));
+		storage.AddString(TrW(IsPlaybackStatisticsInstalled() ? "Playback Statistics" : "Playback Statistics (not installed)").c_str());
 		storage.AddString(TrW("File tags").c_str());
-		storage.AddString(TrW("GroupPlaylist store").c_str());
 		storage.AddString(TrW("Both").c_str());
+		// Likes have their own choice: Playback Statistics has none. The order follows LikeStorage.
+		CComboBox likes(GetDlgItem(IDC_PREF_LIKE_STORAGE));
+		likes.AddString(TrW("GroupPlaylist store").c_str());
+		likes.AddString(TrW("File tags").c_str());
+		likes.AddString(TrW("Both").c_str());
 		ShowValues();
 		m_previewing = true;
 		return FALSE;
@@ -119,7 +138,8 @@ private:
 	}
 
 	void ShowValues() {
-		CComboBox(GetDlgItem(IDC_PREF_RATING)).SetCurSel(static_cast<int>(m_values.storage));
+		CComboBox(GetDlgItem(IDC_PREF_RATING)).SetCurSel(RatingChoiceOf(m_values.storage));
+		CComboBox(GetDlgItem(IDC_PREF_LIKE_STORAGE)).SetCurSel(static_cast<int>(m_values.likes));
 		CheckDlgButton(IDC_PREF_STAR_COLOR_CUSTOM, m_values.view.customStarColor ? BST_CHECKED : BST_UNCHECKED);
 		CheckRadioButton(IDC_LIKE_STYLE_ACCENT, IDC_LIKE_STYLE_EMOJI, m_values.view.likeStyle == LikeStyle::Emoji ? IDC_LIKE_STYLE_EMOJI : IDC_LIKE_STYLE_ACCENT);
 		CheckDlgButton(IDC_LIKE_COLOR_CUSTOM, m_values.view.customLikeColor ? BST_CHECKED : BST_UNCHECKED);
@@ -143,10 +163,11 @@ private:
 		m_callback->on_state_changed();
 	}
 
-	// Where ratings are kept changes the columns' patterns, so it waits for Apply, as on the main page before.
-	void OnStorageChanged(UINT, int, CWindow) {
-		const int index = CComboBox(GetDlgItem(IDC_PREF_RATING)).GetCurSel();
-		if (index >= 0) m_values.storage = static_cast<RatingStorage>(index);
+	// Where ratings and likes are kept changes the columns' patterns, so it waits for Apply, as on the main page before.
+	void OnStorageChanged(UINT, int id, CWindow) {
+		const int index = CComboBox(GetDlgItem(id)).GetCurSel();
+		if (index >= 0 && index < static_cast<int>(std::size(kRatingChoices)) && id == IDC_PREF_RATING) m_values.storage = kRatingChoices[index];
+		if (index >= 0 && id == IDC_PREF_LIKE_STORAGE) m_values.likes = static_cast<LikeStorage>(index);
 		m_callback->on_state_changed();
 	}
 

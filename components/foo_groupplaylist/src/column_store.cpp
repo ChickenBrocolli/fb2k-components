@@ -16,6 +16,10 @@ constexpr GUID guid_built_in_column_edits = { 0x801dd8ba, 0x51ef, 0x41b8, { 0x8e
 
 cfg_string cfg_builtInColumnEdits(guid_built_in_column_edits, "");
 
+constexpr GUID guid_column_order = { 0x5d0c7a3e, 0x92b4, 0x4e17, { 0xa6, 0x38, 0x1f, 0x4b, 0xc9, 0x07, 0x2d, 0x65 } };
+
+cfg_string cfg_columnOrder(guid_column_order, "");
+
 } // namespace
 
 std::vector<ColumnDef> LoadCustomColumnDefs() {
@@ -46,4 +50,18 @@ std::vector<std::string> LoadHiddenBuiltInColumns() {
 
 void SaveHiddenBuiltInColumns(const std::vector<std::string>& names) {
 	cfg_hiddenBuiltInColumns = SerializeColumnNames(names).c_str();
+}
+
+std::vector<std::string> LoadColumnOrder() {
+	return ParseColumnNames(cfg_columnOrder.get().c_str());
+}
+
+void SaveColumnOrder(const std::vector<std::string>& names) {
+	cfg_columnOrder = SerializeColumnNames(names).c_str();
+}
+
+std::vector<ColumnDef> SavedColumnDefs() {
+	std::vector<ColumnDef> defs = SavedBuiltInColumnDefs();
+	for (ColumnDef& def : LoadCustomColumnDefs()) defs.push_back(std::move(def));
+	return OrderColumnDefs(defs, LoadColumnOrder());
 }

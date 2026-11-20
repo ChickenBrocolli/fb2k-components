@@ -133,6 +133,7 @@ public:
 		COMMAND_HANDLER_EX(IDC_PREF_SUMMARY_PLACE, CBN_SELCHANGE, OnSummaryPlaceChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SORT_ON_CLICK, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_DRAG_COLUMNS, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_SHOW_HEADERS, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SCROLL_PER_LIST, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_BOLD_PLAYING, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_TRACK_FONT_BUTTON, OnChooseFont)
@@ -201,6 +202,7 @@ private:
 		CComboBox(GetDlgItem(IDC_PREF_SUMMARY_PLACE)).SetCurSel(static_cast<int>(view.trackSummaryPlace));
 		CheckDlgButton(IDC_PREF_SORT_ON_CLICK, view.sortOnHeaderClick ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_DRAG_COLUMNS, view.dragColumns ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_SHOW_HEADERS, view.showColumnHeaders ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_SCROLL_PER_LIST, view.scrollPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_BOLD_PLAYING, view.boldPlaying ? BST_CHECKED : BST_UNCHECKED);
 		// The spin buttons own the number in their edit box, so the number is set through them.
@@ -245,6 +247,7 @@ private:
 		case IDC_PREF_TRACK_SUMMARY: view.showTrackSummary = checked; break;
 		case IDC_PREF_SORT_ON_CLICK: view.sortOnHeaderClick = checked; break;
 		case IDC_PREF_DRAG_COLUMNS: view.dragColumns = checked; break;
+		case IDC_PREF_SHOW_HEADERS: view.showColumnHeaders = checked; break;
 		case IDC_PREF_SCROLL_PER_LIST: view.scrollPerPlaylist = checked; break;
 		case IDC_PREF_BOLD_PLAYING: view.boldPlaying = checked; break;
 		}

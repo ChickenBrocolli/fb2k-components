@@ -101,6 +101,7 @@ void VisitViewSettings(Visit&& visit) {
 	visit(BoolField{ "scrollPerPlaylist", 13, Page::Main, &ViewSettings::scrollPerPlaylist });
 	visit(BoolField{ "sortOnHeaderClick", 12, Page::Main, &ViewSettings::sortOnHeaderClick });
 	visit(BoolField{ "dragColumns", 25, Page::Main, &ViewSettings::dragColumns });
+	visit(BoolField{ "showColumnHeaders", 36, Page::Main, &ViewSettings::showColumnHeaders });
 	visit(BoolField{ "dimBrackets", 11, Page::Main, &ViewSettings::dimBrackets });
 	visit(BoolField{ "showTrackSummary", 26, Page::Main, &ViewSettings::showTrackSummary });
 	visit(EnumField<TrackSummaryPlace>{ "trackSummaryPlace", 28, Page::Main, &ViewSettings::trackSummaryPlace, kTrackSummaryPlaceCount, TrackSummaryPlaceFrom });

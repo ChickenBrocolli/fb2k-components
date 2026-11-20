@@ -36,7 +36,7 @@ struct ViewSettings {
 	int coverSize = kDefaultCoverSize;
 	// Behaviour.
 	// On by default: a playlist keeps the preset picked for it, and one never given a preset shows the panel's.
-	// So it changes nothing until a preset is picked, and the Library > GroupPlaylist autoplaylists come with theirs.
+	// So it changes nothing until a preset is picked.
 	bool presetPerPlaylist = true;
 	bool dimBrackets = true;
 	// On by default: group headers and label rows show their track count and length at the right end.
@@ -48,6 +48,9 @@ struct ViewSettings {
 	// On by default: column titles drag to reorder the columns. Off locks the order once the user likes it,
 	// as foobar2000 locks its layout outside layout editing mode. Widths can still be dragged.
 	bool dragColumns = true;
+	// On by default. Off hides the row of column titles for a plain look; the columns keep their widths and order.
+	// The titles carry the panel menu, so they come back from the Preferences page.
+	bool showColumnHeaders = true;
 	bool scrollPerPlaylist = true;
 	// Off by default: the default layout has a Playing column, which already marks the playing track.
 	bool boldPlaying = false;

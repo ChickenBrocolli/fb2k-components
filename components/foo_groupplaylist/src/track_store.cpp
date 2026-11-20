@@ -8,7 +8,6 @@
 
 #include <pfc/filetimetools.h>
 
-#include "rating_store.h"
 #include "track_store.h"
 
 namespace {
@@ -58,7 +57,7 @@ public:
 			g_ready = true;
 		} catch (std::exception const& e) {
 			Index()->remove(guid_track_index);
-			FB2K_console_formatter() << "GroupPlaylist: the rating and play history store could not start: " << e;
+			FB2K_console_formatter() << "GroupPlaylist: the store of likes could not start: " << e;
 			return;
 		}
 		Index()->dispatch_global_refresh();
@@ -75,94 +74,48 @@ TrackRecord Read(metadb_index_hash hash) {
 	return record ? *record : TrackRecord{};
 }
 
-void Write(metadb_index_hash hash, const TrackRecord& record) {
+// One transaction holds every write of a batch, as the SDK asks for many updates in a row (metadb_index.h).
+void Write(metadb_index_transaction::ptr transaction, metadb_index_hash hash, const TrackRecord& record) {
 	if (record.IsEmpty()) {
-		Index()->set_user_data(guid_track_index, hash, nullptr, 0);
+		transaction->set_user_data(guid_track_index, hash, nullptr, 0);
 		return;
 	}
 	const std::vector<uint8_t> data = SerializeTrackRecord(record);
-	Index()->set_user_data(guid_track_index, hash, data.data(), data.size());
+	transaction->set_user_data(guid_track_index, hash, data.data(), data.size());
 }
 
-// The fields, in the order of the field indexes: GroupPlaylist's own names, then the standard names of the first
-// five. The standard names are only offered when the Playback Statistics component, which owns them, is not installed.
-// The like, the time it was liked and the two "decided" fields have no standard names. %gp_rating_set% and
-// %gp_liked_set% are 1 when the store decides the rating or the like, so the read patterns show the file's tag only
-// for a track GroupPlaylist never rated or liked (rating_store.cpp).
-enum class Field { Rating, PlayCount, FirstPlayed, LastPlayed, Added, Liked, LikedDate, RatingSet, LikeSet };
-constexpr size_t kOwnCount = 9;
-constexpr size_t kStandardCount = 5;
-constexpr const char* kOwnNames[kOwnCount] = { "gp_rating", "gp_play_count", "gp_first_played", "gp_last_played", "gp_added", "gp_liked", "gp_liked_date", "gp_rating_set", "gp_liked_set" };
-constexpr const char* kStandardNames[kStandardCount] = { "rating", "play_count", "first_played", "last_played", "added" };
-
-bool OffersStandardNames() {
-	static const bool offers = !IsPlaybackStatisticsInstalled();
-	return offers;
-}
+// The fields, in the order of the field indexes: %gp_liked% (1 when liked), %gp_liked_date% and %gp_liked_set%
+// (1 when the store decides the like, so the read pattern shows the file's LOVED tag only for a track GroupPlaylist
+// never liked or unliked, rating_store.cpp). A field with no value reports false, so "%gp_liked% MISSING" finds the
+// tracks that are not liked.
+enum class Field { Liked, LikedDate, LikeSet };
+constexpr const char* kFieldNames[] = { "gp_liked", "gp_liked_date", "gp_liked_set" };
 
 class StoreFields : public metadb_display_field_provider_v2 {
 public:
-	t_uint32 get_field_count() override {
-		return static_cast<t_uint32>(OffersStandardNames() ? kOwnCount + kStandardCount : kOwnCount);
-	}
+	t_uint32 get_field_count() override { return static_cast<t_uint32>(std::size(kFieldNames)); }
 
-	void get_field_name(t_uint32 index, pfc::string_base& out) override {
-		out = index < kOwnCount ? kOwnNames[index] : kStandardNames[index - kOwnCount];
-	}
+	void get_field_name(t_uint32 index, pfc::string_base& out) override { out = kFieldNames[index]; }
 
 	bool process_field(t_uint32 index, metadb_handle* handle, titleformat_text_out* out) override {
 		return process_field_v2(index, handle, handle->query_v2_(), out);
 	}
 
-	// A %gp_...% field with no value reports false, so a query such as "%gp_play_count% MISSING" finds the tracks
-	// never played. A standard name with no value shows the file's tag of that name instead, as foobar2000 would
-	// without this component: %rating% shows the RATING tag.
 	bool process_field_v2(t_uint32 index, metadb_handle* handle, metadb_v2::rec_t const& rec, titleformat_text_out* out) override {
 		if (!g_ready || !rec.info.is_valid()) return false;
 		const TrackRecord record = Read(Key()->transform(rec.info->info(), handle->get_location()));
-		const bool standard = index >= kOwnCount;
-		const Field field = static_cast<Field>(standard ? index - kOwnCount : index);
-		if (WriteRecordField(field, record, out)) return true;
-		// A rating taken away in GroupPlaylist stays away, as on the panel.
-		if (field == Field::Rating && record.RatingDecided()) return false;
-		return standard && WriteTag(kStandardNames[index - kOwnCount], rec.info->info(), out);
-	}
-
-private:
-	static bool WriteRecordField(Field field, const TrackRecord& record, titleformat_text_out* out) {
-		switch (field) {
-		case Field::Rating:
-			if (record.rating == 0) return false;
-			out->write_int(titleformat_inputtypes::meta, record.rating);
-			return true;
-		case Field::PlayCount:
-			if (record.playCount == 0) return false;
-			out->write_int(titleformat_inputtypes::meta, record.playCount);
-			return true;
-		case Field::FirstPlayed: return WriteTime(record.firstPlayed, out);
-		case Field::LastPlayed: return WriteTime(record.lastPlayed, out);
-		case Field::Added: return WriteTime(record.added, out);
-		case Field::Liked:
-			if (record.liked == 0) return false;
-			out->write_int(titleformat_inputtypes::meta, 1);
-			return true;
+		switch (static_cast<Field>(index)) {
+		case Field::Liked: return WriteFlag(record.liked != 0, out);
 		case Field::LikedDate: return WriteTime(record.likedAt, out);
-		case Field::RatingSet: return WriteFlag(record.RatingDecided(), out);
 		case Field::LikeSet: return WriteFlag(record.LikeDecided(), out);
 		}
 		return false;
 	}
 
+private:
 	static bool WriteFlag(bool on, titleformat_text_out* out) {
 		if (!on) return false;
 		out->write_int(titleformat_inputtypes::meta, 1);
-		return true;
-	}
-
-	static bool WriteTag(const char* name, const file_info& info, titleformat_text_out* out) {
-		const char* value = info.meta_get(name, 0);
-		if (value == nullptr || *value == 0) return false;
-		out->write(titleformat_inputtypes::meta, value);
 		return true;
 	}
 
@@ -190,15 +143,19 @@ void Update(metadb_handle_list_cref tracks, const std::function<bool(TrackRecord
 	if (!g_ready) return;
 	std::set<metadb_index_hash> seen;
 	pfc::list_t<metadb_index_hash> changed;
+	metadb_index_transaction::ptr transaction;
 	for (size_t i = 0; i < tracks.get_count(); ++i) {
 		metadb_index_hash hash = 0;
 		if (!Key()->hashHandle(tracks[i], hash) || !seen.insert(hash).second) continue;
 		TrackRecord record = Read(hash);
 		if (!change(record)) continue;
-		Write(hash, record);
+		if (transaction.is_empty()) transaction = metadb_index_manager_v2::get()->begin_transaction();
+		Write(transaction, hash, record);
 		changed += hash;
 	}
-	if (changed.get_count() > 0) Index()->dispatch_refresh(guid_track_index, changed);
+	if (transaction.is_empty()) return;
+	transaction->commit();
+	Index()->dispatch_refresh(guid_track_index, changed);
 }
 
 uint64_t Now() {

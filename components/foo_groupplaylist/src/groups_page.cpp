@@ -10,6 +10,7 @@
 #include "preferences_pages.h"
 #include "preset_store.h"
 #include "resource.h"
+#include "text_painter.h"
 #include "ui_language.h"
 
 // Preferences > Tools > GroupPlaylist > Groups: the group presets.
@@ -107,6 +108,7 @@ public:
 
 	BEGIN_MSG_MAP_EX(GroupsDialog)
 		MSG_WM_INITDIALOG(OnInitDialog)
+		MSG_WM_DRAWITEM(OnDrawItem)
 		NOTIFY_HANDLER_EX(IDC_PRESET_LIST, LVN_ITEMCHANGED, OnListChanged)
 		COMMAND_HANDLER_EX(IDC_PRESET_NAME, EN_CHANGE, OnFieldChanged)
 		COMMAND_HANDLER_EX(IDC_PRESET_HEADER, EN_CHANGE, OnFieldChanged)
@@ -207,27 +209,42 @@ private:
 		UpdatePreview();
 	}
 
-	// Two lines: what the pattern field the user touched last does, and what it shows for the focused track.
+	// What the pattern field the user touched last shows for the focused track, named by that field's label:
+	// "Group header → Abbey Road". A cover text is shown in its lines, as next to the cover.
 	void UpdatePreview() {
 		const int index = SelectedIndex();
 		std::string text;
 		if (index >= 0) {
 			const GroupPreset& preset = m_rows[index].preset;
 			std::string pattern = preset.headerPattern;
-			const char* meaning = "Header: tracks with the same value share one header."; // ui-text
+			const char* field = "Group header"; // ui-text
 			if (m_previewField == IDC_PRESET_COVER) {
 				pattern = preset.coverPattern;
-				meaning = "Cover: tracks with the same value share one cover."; // ui-text
+				field = "Cover"; // ui-text
 			} else if (m_previewField == IDC_PRESET_SUBGROUPS) {
 				pattern = CaretLine(CEdit(GetDlgItem(IDC_PRESET_SUBGROUPS)));
-				meaning = "Labels: a label row starts where the value changes."; // ui-text
+				field = "Labels"; // ui-text
 			} else if (m_previewField == IDC_PRESET_SORT) {
 				pattern = preset.sortPattern;
-				meaning = "Sort: the order this preset sorts the playlist in."; // ui-text
+				field = "Sort by"; // ui-text
 			}
-			text = std::string(Tr(meaning)) + "\n" + DescribePatternPreview(pattern.c_str());
+			std::string value = PatternPreviewValue(pattern.c_str());
+			if (m_previewField == IDC_PRESET_COVER) {
+				for (size_t bar = value.find('|'); bar != std::string::npos; bar = value.find('|', bar + 2)) value.replace(bar, 1, "\n\t");
+			}
+			constexpr const char* kArrow = " \xE2\x86\x92\t";  // " → " and the tab before the value
+			text = Tr(field) + std::string(kArrow) + value;
 		}
 		uSetDlgItemText(m_hWnd, IDC_PRESET_PREVIEW, text.c_str());
+		GetDlgItem(IDC_PRESET_PREVIEW).Invalidate();
+	}
+
+	void OnDrawItem(int id, LPDRAWITEMSTRUCT item) {
+		if (id != IDC_PRESET_PREVIEW) {
+			SetMsgHandled(FALSE);
+			return;
+		}
+		DrawPreviewText(m_hWnd, *item, m_previewPainter);
 	}
 
 	LRESULT OnListChanged(LPNMHDR header) {
@@ -365,6 +382,8 @@ private:
 	fb2k::CDarkModeHooks m_dark;
 	DarkMode::CHyperLink m_syntaxLink;
 	DialogTexts m_texts;
+	TextPainter m_previewPainter;
+	PreviewTrackWatcher m_previewWatcher{ [this] { if (m_hWnd) UpdatePreview(); } };
 };
 
 class GroupsPage : public preferences_page_impl<GroupsDialog> {

@@ -150,9 +150,15 @@ private:
 	}
 
 	// A right click on a group header focuses the group, not a track, so Play starts the group as a double click does.
+	// A right click on the pinned header selects its group without moving the focus, which would scroll the list,
+	// so Play starts at the first selected track when the focused one is not among them.
 	t_size ItemToPlay() const {
 		const size_t group = GetGroupFocus2();
-		return group != SIZE_MAX ? group : GetFocusItem();
+		if (group != SIZE_MAX) return group;
+		const t_size focus = GetFocusItem();
+		if (focus < GetItemCount() && IsItemSelected(focus)) return focus;
+		const t_size first = GetFirstSelected();
+		return first != SIZE_MAX ? first : focus;
 	}
 
 	void RunTrackMenuAt(CPoint screenPoint) {
@@ -181,38 +187,33 @@ private:
 	void RunHeaderMenu(CPoint screenPoint) {
 		enum : UINT { kFirstPresetCommand = 1, kFirstColumnCommand = 1000, kCustomColumnsCommand = 5000, kEditPresetsCommand = 5001,
 			kSmoothScrollOffCommand = 5002, kPinHeadersCommand = 5003, kSortByPresetCommand = 5005, kNoGroupingCommand = 5006, kAutoSizeCommand = 5007,
-			kEditScrollingCommand = 5008, kCustomScrollCommand = 5009, kDragColumnsCommand = 5010,
+			kEditScrollingCommand = 5008, kCustomScrollCommand = 5009, kDragColumnsCommand = 5010, kShowHeadersCommand = 5011,
 			kFirstScrollPresetCommand = 6000 };
 		const auto wide = [](const std::string& text) { return pfc::stringcvt::string_os_from_utf8(text.c_str()); };
 
-		// ColumnDefs() lists the built-in groups in order and then the custom columns.
-		// A line goes above the first column of every group after the first, and above the custom columns.
-		std::vector<size_t> lineAbove;
-		size_t groupEnd = 0;
-		for (const std::vector<ColumnDef>& group : BuiltInColumnGroups()) {
-			groupEnd += group.size();
-			lineAbove.push_back(groupEnd);
-		}
-
 		CMenu columns;
 		columns.CreatePopupMenu();
+		// The columns in the order of the Columns page, where the user arranges them and picks which are listed.
 		const std::vector<ColumnDef>& defs = ColumnDefs();
-		// A line waits until the next listed column, so a group whose columns are all left out leaves no extra line.
-		bool lineWaiting = false;
 		bool anyListed = false;
 		for (size_t index = 0; index < defs.size(); ++index) {
-			if (std::find(lineAbove.begin(), lineAbove.end(), index) != lineAbove.end()) lineWaiting = true;
 			// A column unticked on the Columns page stays listed while this panel shows it, so it can be hidden again.
 			const bool shown = IsColumnShown(defs[index].name);
 			if (!defs[index].showInMenu && !shown) continue;
-			if (lineWaiting && anyListed) columns.AppendMenu(MF_SEPARATOR);
-			lineWaiting = false;
 			anyListed = true;
 			const UINT flags = MF_STRING | (shown ? MF_CHECKED : 0);
 			columns.AppendMenu(flags, kFirstColumnCommand + static_cast<UINT>(index), wide(ColumnTitle(defs[index])));
 		}
 		if (anyListed) columns.AppendMenu(MF_SEPARATOR);
 		columns.AppendMenu(MF_STRING, kCustomColumnsCommand, TrW("Edit...").c_str());
+		// Switches that take one click sit below the lists they belong to, as Auto-size does in the Default UI
+		// playlist's Columns menu. Auto-size belongs to this panel, like its columns; the others to every panel.
+		const ViewSettings settings = LoadViewSettings();
+		columns.AppendMenu(MF_SEPARATOR);
+		columns.AppendMenu(MF_STRING | (IsAutoSizeColumns() ? MF_CHECKED : 0), kAutoSizeCommand, TrW("Auto-size columns").c_str());
+		columns.AppendMenu(MF_STRING | (settings.dragColumns ? MF_CHECKED : 0), kDragColumnsCommand, TrW("Drag to reorder columns").c_str());
+		// Unticked here, the titles and this menu go away; the Preferences page brings them back.
+		columns.AppendMenu(MF_STRING | (settings.showColumnHeaders ? MF_CHECKED : 0), kShowHeadersCommand, TrW("Show column headers").c_str());
 
 		CMenu groups;
 		groups.CreatePopupMenu();
@@ -233,7 +234,6 @@ private:
 		// The feel of smooth scrolling is best judged by trying it, so its presets switch here, next to Off.
 		// Numbers changed on the Scrolling page belong to no preset: they are listed last, as "Custom (unsaved)",
 		// so it shows that picking a preset leaves them behind.
-		const ViewSettings settings = LoadViewSettings();
 		const std::vector<ScrollPreset> scrollPresets = AllScrollPresets(LoadUserScrollPresets());
 		const bool customScroll = IsCustomScroll(scrollPresets, LoadScrollPresetName(), LoadInertiaParams());
 		const std::optional<size_t> scrollPreset = settings.smoothScroll && !customScroll ? FindScrollPreset(scrollPresets, LoadScrollPresetName()) : std::nullopt;
@@ -254,6 +254,9 @@ private:
 		}
 		scrolling.AppendMenu(MF_SEPARATOR);
 		scrolling.AppendMenu(MF_STRING, kEditScrollingCommand, TrW("Edit...").c_str());
+		// Pinning sits with scrolling, as on the Scrolling page, below Edit... as the switches of the Columns menu do.
+		scrolling.AppendMenu(MF_SEPARATOR);
+		scrolling.AppendMenu(MF_STRING | (settings.pinHeaders ? MF_CHECKED : 0), kPinHeadersCommand, TrW("Pin group headers").c_str());
 
 		CMenu menu;
 		menu.CreatePopupMenu();
@@ -261,12 +264,6 @@ private:
 		menu.AppendMenu(MF_POPUP, groups.Detach(), TrW("Groups").c_str());
 		menu.AppendMenu(MF_POPUP, scrolling.Detach(), TrW("Smooth scrolling").c_str());
 
-		// Switches that take one click. Everything else is on the Preferences page.
-		// Auto-size columns belongs to this panel, like its columns, as in the Default UI playlist's header menu.
-		menu.AppendMenu(MF_SEPARATOR);
-		menu.AppendMenu(MF_STRING | (IsAutoSizeColumns() ? MF_CHECKED : 0), kAutoSizeCommand, TrW("Auto-size columns").c_str());
-		menu.AppendMenu(MF_STRING | (settings.dragColumns ? MF_CHECKED : 0), kDragColumnsCommand, TrW("Drag to reorder columns").c_str());
-		menu.AppendMenu(MF_STRING | (settings.pinHeaders ? MF_CHECKED : 0), kPinHeadersCommand, TrW("Pin group headers").c_str());
 		const UINT command = static_cast<UINT>(menu.TrackPopupMenu(TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, screenPoint.x, screenPoint.y, m_hWnd));
 		if (command == kCustomColumnsCommand) {
 			ShowColumnsPage();
@@ -287,10 +284,11 @@ private:
 				changed.smoothScroll = true;
 				ApplyViewSettings(changed);
 			}
-		} else if (command == kSmoothScrollOffCommand || command == kPinHeadersCommand || command == kDragColumnsCommand) {
+		} else if (command == kSmoothScrollOffCommand || command == kPinHeadersCommand || command == kDragColumnsCommand || command == kShowHeadersCommand) {
 			ViewSettings changed = settings;
 			if (command == kSmoothScrollOffCommand) changed.smoothScroll = false;
 			else if (command == kPinHeadersCommand) changed.pinHeaders = !changed.pinHeaders;
+			else if (command == kShowHeadersCommand) changed.showColumnHeaders = !changed.showColumnHeaders;
 			else changed.dragColumns = !changed.dragColumns;
 			ApplyViewSettings(changed);
 		} else if (command >= kFirstScrollPresetCommand) {

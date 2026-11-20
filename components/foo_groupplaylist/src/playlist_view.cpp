@@ -1,6 +1,8 @@
 #include "stdafx.h"
 
+#include <libPPUI/IDataObjectUtils.h>
 #include <libPPUI/PaintUtils.h>
+#include <shlobj.h>
 #include <uxtheme.h>
 #include <vssym32.h>
 
@@ -70,12 +72,6 @@ DWORD HeaderFormat(ColumnAlignment alignment) {
 	return alignment == ColumnAlignment::Right ? HDF_RIGHT : alignment == ColumnAlignment::Center ? HDF_CENTER : HDF_LEFT;
 }
 
-std::vector<ColumnDef> AllColumnDefs() {
-	std::vector<ColumnDef> defs = SavedBuiltInColumnDefs();
-	for (ColumnDef& def : LoadCustomColumnDefs()) defs.push_back(std::move(def));
-	return defs;
-}
-
 // Every panel that exists, so a change to the shared custom columns reaches all of them.
 std::vector<PlaylistView*>& LiveViews() {
 	static std::vector<PlaylistView*> views;
@@ -96,7 +92,7 @@ int CountInfoLines(const char* pattern) {
 // so no callback has to check for a missing window.
 PlaylistView::PlaylistView()
 	: playlist_callback_single_impl_base(0), play_callback_impl_base(0),
-	  m_columnDefs(AllColumnDefs()),
+	  m_columnDefs(SavedColumnDefs()),
 	  m_presets(LoadGroupPresets()),
 	  m_covers([this] { if (m_hWnd) Invalidate(); }) {
 	LiveViews().push_back(this);
@@ -124,7 +120,7 @@ void PlaylistView::OnCustomColumnsChanged(const std::vector<std::pair<std::strin
 			}
 		}
 	}
-	m_columnDefs = AllColumnDefs();
+	m_columnDefs = SavedColumnDefs();
 	SetColumnLayout(layout);
 }
 
@@ -190,6 +186,20 @@ bool PlaylistView::OnColumnHeaderDrag(t_size listColumn, t_size newPosition) {
 void PlaylistView::ApplyHeaderDragging() {
 	if (!IsHeaderEnabled()) return;
 	GetHeaderCtrl().ModifyStyle(m_settings.dragColumns ? 0 : HDS_DRAGDROP, m_settings.dragColumns ? HDS_DRAGDROP : 0);
+}
+
+// "Show column headers" off: the header control stays, because it holds the column widths and order, and is only
+// hidden. The list control lays the header out by asking it (HDM_LAYOUT) and hides it and the line below it when
+// the answer is no, on every resize, scroll, font and theme change. So the answer is given here, in one place.
+LRESULT CALLBACK PlaylistView::HeaderProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR view) {
+	if (message == HDM_LAYOUT && !reinterpret_cast<PlaylistView*>(view)->m_settings.showColumnHeaders) return FALSE;
+	if (message == WM_NCDESTROY) RemoveWindowSubclass(window, HeaderProc, id);
+	return DefSubclassProc(window, message, wParam, lParam);
+}
+
+// The list control leaves room for the header by its size even while it is hidden, so a hidden header gives none.
+CRect PlaylistView::GetClientRectHook() const {
+	return m_settings.showColumnHeaders ? __super::GetClientRectHook() : CListControlImpl::GetClientRectHook();
 }
 
 // Names with no column definition are dropped, so a layout saved with a column that no longer exists still loads.
@@ -277,7 +287,7 @@ void PlaylistView::RebuildColumns() {
 		if (def->kind == ColumnKind::Rating) {
 			compiler->compile_safe(listColumn.script, RatingReadPattern(GetRatingStorage()));
 		} else if (def->kind == ColumnKind::Like) {
-			compiler->compile_safe(listColumn.script, LikeReadPattern(GetRatingStorage()));
+			compiler->compile_safe(listColumn.script, LikeReadPattern(GetLikeStorage()));
 		} else if (def->kind == ColumnKind::Duration) {
 			// On the playing track the original shows the time played, or the time left after a click.
 			compiler->compile_safe(listColumn.script, "$if(%isplaying%,%playback_time% / %length%,%length%)");
@@ -339,7 +349,7 @@ void PlaylistView::OnColumnHeaderClick(t_size listColumn) {
 	if (!def) return;
 	const bool descending = m_headerSort.Click(def->name, ActivePlaylistGuid());
 	const char* pattern = def->kind == ColumnKind::Rating ? RatingReadPattern(GetRatingStorage())
-		: def->kind == ColumnKind::Like ? LikeReadPattern(GetRatingStorage()) : def->pattern.c_str();
+		: def->kind == ColumnKind::Like ? LikeReadPattern(GetLikeStorage()) : def->pattern.c_str();
 	SortPlaylist(pattern, descending);
 }
 
@@ -440,15 +450,65 @@ size_t PlaylistView::SelectCoverBlock(size_t block) {
 	return first;
 }
 
-// A plain click on a cover selects the tracks under that cover. Ctrl and Shift clicks go to the list control.
+// With Ctrl, a click on a label row or a cover takes its tracks into the selection or out of it; with Shift it
+// adds them. An album header does the same in the list control. False without either key.
+bool PlaylistView::SelectPartWithModifiers(WPARAM keys, size_t first, size_t count) {
+	if ((keys & (MK_CONTROL | MK_SHIFT)) == 0 || count == 0) return false;
+	const pfc::bit_array_range range(first, count);
+	if ((keys & MK_CONTROL) != 0) SetSelection(range, pfc::bit_array_val(GetSelectedCount(range, 1) == 0));
+	else SetSelection(range, pfc::bit_array_true());
+	SetFocusItem(first);
+	return true;
+}
+
+// A press on a cover selects the tracks under that cover, and a drag from there moves them (OnCoverMouseMove).
+// The list control cannot start that drag: much of a cover lies below its track rows, where it sees no row.
+// A selection that already holds the cover's tracks stays for the drag, so several covers move together.
 LRESULT PlaylistView::OnCoverButtonDown(UINT, WPARAM keys, LPARAM position, BOOL& handled) {
-	const std::optional<size_t> block = (keys & (MK_CONTROL | MK_SHIFT)) == 0 ? CoverBlockAt(CPoint(position)) : std::nullopt;
+	const CPoint point(position);
+	const std::optional<size_t> block = CoverBlockAt(point);
 	if (!block) {
 		handled = FALSE;
 		return 0;
 	}
 	SetFocus();
-	SelectCoverBlock(*block);
+	const size_t first = m_groups.BlockAt(*block).firstItem;
+	const size_t count = m_groups.BlockSize(*block);
+	if (SelectPartWithModifiers(keys, first, count)) return 0;
+	SelectForMenu(first, count);
+	SetFocusItem(first);
+	m_coverPress = CoverPress{ point, first, count };
+	SetCapture();
+	return 0;
+}
+
+// Released without a drag: a click, which leaves only this cover's tracks selected.
+LRESULT PlaylistView::OnCoverButtonUp(UINT, WPARAM, LPARAM, BOOL& handled) {
+	handled = FALSE;
+	if (!m_coverPress) return 0;
+	const CoverPress press = *m_coverPress;
+	m_coverPress.reset();
+	if (GetCapture() == m_hWnd) ReleaseCapture();
+	if (press.first + press.count <= GetItemCount()) SetSelection(pfc::bit_array_true(), pfc::bit_array_range(press.first, press.count));
+	return 0;
+}
+
+LRESULT PlaylistView::OnCoverMouseMove(UINT, WPARAM buttons, LPARAM position, BOOL& handled) {
+	handled = FALSE;
+	if (!m_coverPress) return 0;
+	if ((buttons & MK_LBUTTON) == 0) {
+		m_coverPress.reset();
+		return 0;
+	}
+	const CPoint point(position);
+	const CPoint origin = m_coverPress->point;
+	if (std::abs(point.x - origin.x) <= GetSystemMetrics(SM_CXDRAG) && std::abs(point.y - origin.y) <= GetSystemMetrics(SM_CYDRAG)) return 0;
+	m_coverPress.reset();
+	if (GetCapture() == m_hWnd) ReleaseCapture();
+	m_coverDragActive = true;
+	RunDragDrop(PointClientToAbs(origin), false);
+	m_coverDragActive = false;
+	handled = TRUE;
 	return 0;
 }
 
@@ -553,6 +613,8 @@ void PlaylistView::AttachToPlaylist() {
 	SetPlaylistStyle();
 	// HDS_BUTTONS makes the header report clicks, which sort the playlist (OnColumnHeaderClick).
 	InitializeHeaderCtrl(HDS_FULLDRAG | (m_settings.dragColumns ? HDS_DRAGDROP : 0) | HDS_BUTTONS);
+	SetWindowSubclass(GetHeaderCtrl(), HeaderProc, 0, reinterpret_cast<DWORD_PTR>(this));
+	UpdateHeaderLayout();
 	RebuildColumns();
 	set_callback_flags(kPlaylistCallbacks);
 	play_callback_reregister(kPlaybackCallbacks);
@@ -693,11 +755,25 @@ std::optional<size_t> PlaylistView::LabelLevelAtPoint(CPoint clientPoint, size_t
 
 // Where an album or a section goes: before the album or section under the point when the point is in
 // its upper half, after it otherwise. A point on an album header counts as the album's top.
+// The row is found from the full row heights, as in CoverBlockAt: the part of a cover below its track rows
+// belongs to the block's last row, though the list control sees no row there.
 size_t PlaylistView::DropIndexAt(CPoint clientPoint, DragUnit unit, size_t level) const {
 	size_t item = 0;
 	if (GroupHeaderFromPoint2(clientPoint, item)) return item;
-	if (!ItemFromPoint(clientPoint, item) || item >= m_groups.ItemCount()) return GetItemCount();
-	const auto [first, end] = unit == DragUnit::Section ? SectionRangeOf(item, level) : AlbumRangeOf(item);
+	item = IndexFromPointAbs(PointClientToAbs(clientPoint).y);
+	if (item >= m_groups.ItemCount()) return GetItemCount();
+	std::pair<size_t, size_t> range;
+	switch (unit) {
+	case DragUnit::Section: range = SectionRangeOf(item, level); break;
+	case DragUnit::Cover: {
+		const size_t block = m_groups.BlockIndexOf(item);
+		const size_t blockFirst = m_groups.BlockAt(block).firstItem;
+		range = { blockFirst, blockFirst + m_groups.BlockSize(block) };
+		break;
+	}
+	default: range = AlbumRangeOf(item); break;
+	}
+	const auto [first, end] = range;
 	const int top = GetItemOffsetAbs(first);
 	const int bottom = GetItemOffsetAbs(end - 1) + GetItemHeight2(end - 1);
 	return PointClientToAbs(clientPoint).y < (top + bottom) / 2 ? first : end;
@@ -1198,8 +1274,42 @@ LRESULT PlaylistView::OnPinnedHeaderButton(UINT message, WPARAM, LPARAM position
 	const size_t first = pinned->firstItem;
 	const size_t count = ResolveGroupRange2(first);
 	SetFocus();
-	if (count > 0) SetSelection(pfc::bit_array_true(), pfc::bit_array_range(first, count));
+	if (message == WM_RBUTTONDOWN) SelectForMenu(first, count);
+	else if (count > 0) SetSelection(pfc::bit_array_true(), pfc::bit_array_range(first, count));
 	if (message == WM_LBUTTONDBLCLK && count > 0) ExecuteDefaultActionGroup(first, count);
+	return 0;
+}
+
+// A right click selects what is under it for the menu. When the selection already holds all of it, the selection
+// stays, so the menu can act on several albums, sections or covers at once, as on several selected tracks.
+void PlaylistView::SelectForMenu(size_t first, size_t count) {
+	if (count == 0) return;
+	const pfc::bit_array_range range(first, count);
+	if (GetSelectedCount(range) != count) SetSelection(pfc::bit_array_true(), range);
+}
+
+// A right click on a label row takes its section and one on a cover takes the cover's tracks, as a left click
+// does. Left to the list control, the click would select only the track under the pointer. A right click on an
+// album header is the list control's own and selects the album.
+LRESULT PlaylistView::OnPartRightButtonDown(UINT, WPARAM, LPARAM position, BOOL& handled) {
+	const CPoint point(position);
+	size_t first = 0;
+	size_t count = 0;
+	size_t item = 0;
+	if (const std::optional<size_t> block = CoverBlockAt(point)) {
+		first = m_groups.BlockAt(*block).firstItem;
+		count = m_groups.BlockSize(*block);
+	} else if (const std::optional<size_t> level = LabelLevelAtPoint(point, item)) {
+		const auto [sectionFirst, sectionEnd] = SectionRangeOf(item, *level);
+		first = sectionFirst;
+		count = sectionEnd - sectionFirst;
+	} else {
+		handled = FALSE;
+		return 0;
+	}
+	SetFocus();
+	SelectForMenu(first, count);
+	SetFocusItem(first);
 	return 0;
 }
 
@@ -1597,7 +1707,7 @@ void PlaylistView::WriteLikeOf(size_t item, bool liked) {
 	if (!m_playlists->activeplaylist_get_item_handle(track, item)) return;
 	metadb_handle_list tracks;
 	tracks.add_item(track);
-	WriteLikes(tracks, liked, GetRatingStorage());
+	WriteLikes(tracks, liked, GetLikeStorage());
 }
 
 // The playlist reports the change when the write is done, and the row repaints then.
@@ -1774,13 +1884,16 @@ void PlaylistView::ShowViewSettings(const ViewSettings& settings) {
 		view->m_layout.coverWidth = static_cast<float>(view->m_settings.coverSize + 2 * kCoverInset);
 		view->ApplyFonts();
 		view->ApplyHeaderDragging();
+		view->ListHandleResize();
 		view->RebuildColumns();
 		view->OnPlaylistContentChanged();
 		view->Invalidate();
 	}
 }
-void PlaylistView::ApplyRatingStorage(RatingStorage storage) {
-	SetRatingStorage(storage);
+void PlaylistView::ApplyRatingStorage(RatingStorage ratings, LikeStorage likes) {
+	// The like choice first: until it is saved, it follows the rating choice (GetLikeStorage).
+	SetLikeStorage(likes);
+	SetRatingStorage(ratings);
 	for (PlaylistView* view : LiveViews()) {
 		if (!view->m_hWnd) continue;
 		// The widths and places the user dragged stay.
@@ -1833,13 +1946,23 @@ void PlaylistView::SetSelection(pfc::bit_array const& affected, pfc::bit_array c
 
 // The list control starts a move only from tracks that are already selected. A press on an album header
 // would start a selection box, and a press on a label row would select one track. Selecting the album or
-// the section here first lets one press and drag move it. Ctrl and Shift clicks keep their usual meaning.
+// the section here first lets one press and drag move it. With Ctrl or Shift an album header is the list control's
+// own, and a label row takes its whole section the same way (SelectPartWithModifiers).
 LRESULT PlaylistView::OnHeaderButtonDown(UINT, WPARAM keys, LPARAM position, BOOL& handled) {
 	handled = FALSE;
 	m_pressedSection.reset();
-	if ((keys & (MK_CONTROL | MK_SHIFT)) != 0) return 0;
 	const CPoint point(position);
 	size_t item = 0;
+	if ((keys & (MK_CONTROL | MK_SHIFT)) != 0) {
+		if (GroupHeaderFromPoint2(point, item)) return 0;
+		const std::optional<size_t> level = LabelLevelAtPoint(point, item);
+		if (!level) return 0;
+		const auto [first, end] = SectionRangeOf(item, *level);
+		SetFocus();
+		SelectPartWithModifiers(keys, first, end - first);
+		handled = TRUE;
+		return 0;
+	}
 	if (GroupHeaderFromPoint2(point, item)) {
 		const size_t count = ResolveGroupRange2(item);
 		if (count > 0) SetSelection(pfc::bit_array_true(), pfc::bit_array_range(item, count));
@@ -1867,23 +1990,75 @@ LRESULT PlaylistView::OnSelectPressedSection(UINT, WPARAM, LPARAM, BOOL&) {
 	return 0;
 }
 
-// A drag that starts on an album header moves the album, and one that starts on a label row moves that
-// section. Both are dropped only at boundaries of the same kind.
+namespace {
+// The list control's own drag source takes a release anywhere inside the panel's rectangle as a reorder,
+// even over a window on top of the panel (an Explorer window, a floating window), which then never gets
+// the drop. This one reorders only when the window under the pointer is the panel or one of its children.
+class DragSource : public ImplementCOMRefCounter<IDropSource> {
+public:
+	explicit DragSource(HWND panel) : m_panel(panel) {}
+
+	std::optional<CPoint> releasedOnPanel;
+
+	COM_QI_BEGIN()
+		COM_QI_ENTRY(IUnknown)
+		COM_QI_ENTRY(IDropSource)
+	COM_QI_END()
+
+	HRESULT STDMETHODCALLTYPE GiveFeedback(DWORD effect) override {
+		m_effect = effect;
+		return DRAGDROP_S_USEDEFAULTCURSORS;
+	}
+
+	HRESULT STDMETHODCALLTYPE QueryContinueDrag(BOOL escapePressed, DWORD keys) override {
+		if (escapePressed || (keys & MK_RBUTTON) != 0) return DRAGDROP_S_CANCEL;
+		if ((keys & MK_LBUTTON) != 0) return S_OK;
+		if (m_effect == DROPEFFECT_NONE) return DRAGDROP_S_CANCEL;
+		CPoint point;
+		if (!GetCursorPos(&point)) return DRAGDROP_S_CANCEL;
+		const HWND under = WindowFromPoint(point);
+		if (under == m_panel || IsChild(m_panel, under)) {
+			releasedOnPanel = point;
+			return DRAGDROP_S_CANCEL;
+		}
+		return DRAGDROP_S_DROP;
+	}
+
+private:
+	HWND m_panel;
+	DWORD m_effect = DROPEFFECT_NONE;
+};
+} // namespace
+
+// A drag that starts on an album header moves the album, one that starts on a label row moves that section,
+// and one that starts on a cover moves the cover's tracks. Each is dropped only at boundaries of its own kind.
 // The list control passes the origin in list coordinates (PointClientToAbs), not client coordinates.
 void PlaylistView::RunDragDrop(const CPoint& origin, bool isRightClick) {
+	if (isRightClick) {
+		__super::RunDragDrop(origin, isRightClick);
+		return;
+	}
 	size_t item = 0;
 	m_pressedSection.reset();
 	m_dragUnit = DragUnit::Tracks;
-	if (!isRightClick) {
-		const CPoint clientOrigin = PointAbsToClient(origin);
-		if (GroupHeaderFromPoint2(clientOrigin, item)) {
-			m_dragUnit = DragUnit::Album;
-		} else if (const std::optional<size_t> level = LabelLevelAtPoint(clientOrigin, item)) {
-			m_dragUnit = DragUnit::Section;
-			m_dragLevel = *level;
-		}
+	const CPoint clientOrigin = PointAbsToClient(origin);
+	if (GroupHeaderFromPoint2(clientOrigin, item)) {
+		m_dragUnit = DragUnit::Album;
+	} else if (CoverBlockAt(clientOrigin)) {
+		m_dragUnit = DragUnit::Cover;
+	} else if (const std::optional<size_t> level = LabelLevelAtPoint(clientOrigin, item)) {
+		m_dragUnit = DragUnit::Section;
+		m_dragLevel = *level;
 	}
-	__super::RunDragDrop(origin, isRightClick);
+	const pfc::com_ptr_t<DragSource> source = new DragSource(m_hWnd);
+	DWORD effect = DROPEFFECT_NONE;
+	DoDragDrop(MakeDataObject().get_ptr(), source.get_ptr(), DragDropSourceEffects(), &effect);
+	if (source->releasedOnPanel) {
+		CPoint point = *source->releasedOnPanel;
+		ScreenToClient(&point);
+		pfc::array_t<size_t> order;
+		if (MakeDropReorderPermutation(order, point)) RequestReorder(order.get_ptr(), order.get_size());
+	}
 	m_dragUnit = DragUnit::Tracks;
 }
 
@@ -1932,6 +2107,11 @@ bool DropHoldsFolder(IDataObject* data) {
 // go before or after the album under the point (DropIndexAt).
 PlaylistView::dragDropAccept_t PlaylistView::DragDropAccept2(IDataObject* data) {
 	dragDropAccept_t accept;
+	if (m_coverDragActive) {
+		accept.dwEFfect = DROPEFFECT_MOVE;
+		accept.showDropMark = true;
+		return accept;
+	}
 	if (playlist_incoming_item_filter::get()->process_dropped_files_check(data)) {
 		accept.dwEFfect = DROPEFFECT_COPY;
 		accept.showDropMark = true;
@@ -1962,6 +2142,19 @@ void PlaylistView::OnDrop(IDataObject* data, CPoint screenPoint) {
 		playlists->playlist_insert_items(playlist, at, tracks, pfc::bit_array_true());
 	});
 	playlist_incoming_item_filter_v2::get()->process_dropped_files_async(data, playlist_incoming_item_filter_v2::op_flag_delay_ui, core_api::get_main_window(), notify);
+}
+
+// Selected tracks dragged out to another panel or to Explorer carry the same data as Copy (CopySelection).
+// A drop inside this panel only reorders and never reads it. The list control allows a move so that reorder
+// works, so Explorer is told to copy by default. A drag to a folder on the same drive then does not take the
+// files away from the library.
+pfc::com_ptr_t<IDataObject> PlaylistView::MakeDataObject() {
+	metadb_handle_list items;
+	m_playlists->activeplaylist_get_selected_items(items);
+	auto data = ole_interaction::get()->create_dataobject(items);
+	static const UINT preferredEffect = RegisterClipboardFormat(CFSTR_PREFERREDDROPEFFECT);
+	IDataObjectUtils::SetDataObjectDWORD(data, preferredEffect, DROPEFFECT_COPY);
+	return data;
 }
 
 void PlaylistView::ExecuteDefaultAction(t_size index) {

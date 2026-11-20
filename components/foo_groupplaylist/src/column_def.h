@@ -58,7 +58,7 @@ struct ColumnLayout {
 	BlockColumnPlaces places;
 };
 
-// The built-in columns in menu order, one inner list per menu group:
+// The built-in columns in the order they come in, one inner list per kind (the user can reorder them, column_store.h):
 // playlist, tags, audio, ReplayGain, playback statistics, file.
 // Which columns are here comes from a survey of other players, not from the original's list. The patterns are standard title formatting.
 inline std::vector<std::vector<ColumnDef>> BuiltInColumnGroups() {
@@ -92,7 +92,7 @@ inline std::vector<std::vector<ColumnDef>> BuiltInColumnGroups() {
 		{
 			{ "Rating", "", ColumnAlignment::Left, 80, ColumnKind::Rating },
 			{ "Like", "", ColumnAlignment::Center, 40, ColumnKind::Like },
-			{ "Played", "[%gp_play_count%]", ColumnAlignment::Right, 55 },
+			{ "Played", "[%play_count%]", ColumnAlignment::Right, 55 },
 		},
 		{
 			{ "File name", "%filename_ext%", ColumnAlignment::Left, 200 },
@@ -122,6 +122,26 @@ inline std::vector<std::string> ParseColumnNames(const std::string& text) {
 		if (!fields.empty() && !fields[0].empty()) names.push_back(fields[0]);
 	}
 	return names;
+}
+
+// The columns in the order the user gave them on the Columns page, which is the order of the Columns menu.
+// A column the order does not name (a built-in column of a later version, a column from a settings file) comes after
+// the named ones, in the place it had. A name no column has is skipped.
+inline std::vector<ColumnDef> OrderColumnDefs(const std::vector<ColumnDef>& defs, const std::vector<std::string>& order) {
+	std::vector<ColumnDef> ordered;
+	std::vector<bool> placed(defs.size(), false);
+	for (const std::string& name : order) {
+		for (size_t index = 0; index < defs.size(); ++index) {
+			if (placed[index] || defs[index].name != name) continue;
+			ordered.push_back(defs[index]);
+			placed[index] = true;
+			break;
+		}
+	}
+	for (size_t index = 0; index < defs.size(); ++index) {
+		if (!placed[index]) ordered.push_back(defs[index]);
+	}
+	return ordered;
 }
 
 // The built-in columns, with the named ones left out of the Columns menu.

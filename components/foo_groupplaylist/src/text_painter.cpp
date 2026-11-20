@@ -334,6 +334,8 @@ std::wstring FamilyName(IDWriteFont* font) {
 struct CachedLayout {
 	CComPtr<IDWriteTextLayout> layout;
 	DWRITE_TEXT_METRICS metrics = {};
+	// The distance from the top of the layout to the baseline of its line.
+	float baseline = 0;
 };
 
 class LayoutCache {
@@ -386,6 +388,10 @@ struct TextPainter::DirectWrite {
 	struct Format {
 		CComPtr<IDWriteTextFormat> format;
 		CComPtr<IDWriteInlineObject> ellipsis;
+		// The font's own ascent and descent in whole pixels, as GDI's text cell has them. Text is placed by these,
+		// not by the height of the line it makes (see Draw).
+		int ascent = 0;
+		int descent = 0;
 	};
 
 	CComPtr<IDWriteBitmapRenderTarget> target;
@@ -402,11 +408,30 @@ struct TextPainter::DirectWrite {
 		return found->second.format ? &found->second : nullptr;
 	}
 
+	// Puts the font a GDI-only name stands for into the LOGFONT, from Windows' list of such names (GDI's own
+	// GetTextFace answers with the stand-in name). "MS Shell Dlg 2" stands for "Tahoma". False when the name is not listed.
+	static bool ResolveFaceName(LOGFONTW& logFont) {
+		wchar_t face[LF_FACESIZE + 32] = {};
+		DWORD size = sizeof(face);
+		if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes", logFont.lfFaceName,
+			RRF_RT_REG_SZ, nullptr, face, &size) != ERROR_SUCCESS) return false;
+		// A listed font can carry a character set after a comma: "Arial,0".
+		if (wchar_t* comma = wcschr(face, L',')) *comma = L'\0';
+		if (face[0] == L'\0' || _wcsicmp(face, logFont.lfFaceName) == 0 || wcslen(face) >= LF_FACESIZE) return false;
+		wcscpy_s(logFont.lfFaceName, face);
+		return true;
+	}
+
 	Format MakeFormat(const LOGFONTW& logFont) {
 		Format made;
 		auto& factories = Factories::Get();
 		CComPtr<IDWriteFont> font;
-		if (FAILED(factories.gdiInterop->CreateFontFromLOGFONT(&logFont, &font.p))) return made;
+		if (FAILED(factories.gdiInterop->CreateFontFromLOGFONT(&logFont, &font.p))) {
+			// A name that only GDI knows, such as "MS Shell Dlg", the font of dialogs, stands for another font. GDI says
+			// which one it picks, and DirectWrite knows that one.
+			LOGFONTW resolved = logFont;
+			if (!ResolveFaceName(resolved) || FAILED(factories.gdiInterop->CreateFontFromLOGFONT(&resolved, &font.p))) return made;
+		}
 		const std::wstring family = FamilyName(font);
 		if (family.empty()) return made;
 		// A negative height is the em size; a positive one is the cell height, ascent plus descent.
@@ -430,6 +455,11 @@ struct TextPainter::DirectWrite {
 		}
 		CComPtr<IDWriteInlineObject> ellipsis;
 		if (FAILED(factories.dwrite->CreateEllipsisTrimmingSign(format, &ellipsis.p))) return made;
+		DWRITE_FONT_METRICS fontMetrics = {};
+		font->GetMetrics(&fontMetrics);
+		if (fontMetrics.designUnitsPerEm == 0) return made;
+		made.ascent = static_cast<int>(std::lround(fontMetrics.ascent * size / fontMetrics.designUnitsPerEm));
+		made.descent = static_cast<int>(std::lround(fontMetrics.descent * size / fontMetrics.designUnitsPerEm));
 		made.format = format;
 		made.ellipsis = ellipsis;
 		return made;
@@ -450,6 +480,13 @@ struct TextPainter::DirectWrite {
 			made.layout->SetTrimming(&trimming, format.ellipsis);
 		}
 		if (FAILED(made.layout->GetMetrics(&made.metrics))) return nullptr;
+		// Text with line breaks (a comment or lyrics tag) makes more than one line; the first line places it.
+		UINT32 lineCount = 0;
+		made.layout->GetLineMetrics(nullptr, 0, &lineCount);
+		if (lineCount == 0) return nullptr;
+		std::vector<DWRITE_LINE_METRICS> lineMetrics(lineCount);
+		if (FAILED(made.layout->GetLineMetrics(lineMetrics.data(), lineCount, &lineCount))) return nullptr;
+		made.baseline = lineMetrics.front().baseline;
 		return layouts.Add(std::move(key), std::move(made));
 	}
 
@@ -473,8 +510,12 @@ struct TextPainter::DirectWrite {
 		const CachedLayout* line = LayoutFor(text, *format, rect.Width(), align, ellipsis);
 		if (!line) return false;
 
-		// Centred top to bottom on a whole pixel, as GDI's DT_VCENTER does.
-		const int lineTop = rect.top + (rect.Height() - static_cast<int>(std::lround(line->metrics.height))) / 2;
+		// The font's text cell is centred top to bottom on a whole pixel, as GDI's DT_VCENTER does, and the line's
+		// baseline is put on the cell's. A line with Korean, Latin or emoji takes glyphs from other fonts and is
+		// taller or shorter than the font's own cell; centred by its own height, such texts sat a pixel apart from
+		// their neighbours, as the column titles showed.
+		const int cellTop = rect.top + (rect.Height() - (format->ascent + format->descent)) / 2;
+		const int lineTop = cellTop + format->ascent - static_cast<int>(std::lround(line->baseline));
 
 		// Only the pixels the text covers are copied to the bitmap and back: the text's own box with a little room
 		// for glyphs that reach past it, within the rectangle and the part of the DC that can be seen.

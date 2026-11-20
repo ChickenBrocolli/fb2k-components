@@ -75,7 +75,7 @@ void AVersionTwoRecordReadsWithoutALikeTime() {
 	CHECK(*read == old);
 }
 
-// A record saved before version 4 decides the rating and the like only when it has them.
+// A record saved before version 4 decides the like only when it has one.
 void AnOldRecordDecidesOnlyWhatItHas() {
 	TrackRecord old = Sample();
 	old.ratingSet = old.likeSet = false;
@@ -84,22 +84,17 @@ void AnOldRecordDecidesOnlyWhatItHas() {
 	bytes.resize(bytes.size() - 4);
 	const auto read = ParseTrackRecord(bytes.data(), bytes.size());
 	CHECK(read.has_value() && *read == old);
-	CHECK(read->RatingDecided() && read->LikeDecided());
-	CHECK(!TrackRecord{}.RatingDecided() && !TrackRecord{}.LikeDecided());
+	CHECK(read->LikeDecided());
+	CHECK(!TrackRecord{}.LikeDecided());
 }
 
-// A track liked or rated only in its file tags: taking the like or the rating away in GroupPlaylist is kept,
-// so the tag no longer shows in its place.
-void TakingAwayATagLikeOrRatingIsKept() {
+// A track liked only in its file tags: taking the like away in GroupPlaylist is kept, so the tag no longer shows
+// in its place.
+void TakingAwayATagLikeIsKept() {
 	TrackRecord record;
 	CHECK(SetLiked(record, false, 100));
 	CHECK(record.LikeDecided() && record.liked == 0 && !record.IsEmpty());
 	CHECK(!SetLiked(record, false, 200));
-	CHECK(SetRating(record, 0));
-	CHECK(record.RatingDecided() && record.rating == 0);
-	CHECK(!SetRating(record, 0));
-	CHECK(SetRating(record, 4));
-	CHECK(record.rating == 4);
 }
 
 void LikingKeepsTheTimeOfTheFirstLike() {
@@ -121,14 +116,6 @@ void ARatingAboveFiveReadsAsFive() {
 	CHECK(ParseTrackRecord(bytes.data(), bytes.size())->rating == 5);
 }
 
-void CountingAPlaySetsTheDates() {
-	TrackRecord record;
-	CountPlay(record, 100);
-	CHECK(record.playCount == 1 && record.firstPlayed == 100 && record.lastPlayed == 100);
-	CountPlay(record, 200);
-	CHECK(record.playCount == 2 && record.firstPlayed == 100 && record.lastPlayed == 200);
-}
-
 } // namespace
 
 void RunTrackRecordTests() {
@@ -140,7 +127,6 @@ void RunTrackRecordTests() {
 	AVersionTwoRecordReadsWithoutALikeTime();
 	LikingKeepsTheTimeOfTheFirstLike();
 	AnOldRecordDecidesOnlyWhatItHas();
-	TakingAwayATagLikeOrRatingIsKept();
+	TakingAwayATagLikeIsKept();
 	ARatingAboveFiveReadsAsFive();
-	CountingAPlaySetsTheDates();
 }

@@ -8,7 +8,7 @@ A 64-bit alternative to SimPlaylist, written from scratch. Not affiliated with t
 Features:
 * Groups and labels made from title formatting patterns, with ready-made presets, or no grouping at all
 * 23 built-in columns plus your own columns
-* Star ratings and likes you click, play counts and play dates, kept by GroupPlaylist itself (no other component needed), with ready-made autoplaylists such as "played more than 10 times" and "liked tracks"
+* Star ratings and likes you click, and a play count column (ratings and play counts use the Playback Statistics component)
 * Colour emoji in titles and tags; WebP album art
 * Follows the Default UI colours, fonts and dark mode
 * Remembers the grouping and scroll position of each playlist

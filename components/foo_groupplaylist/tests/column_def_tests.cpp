@@ -253,9 +253,36 @@ void AGivenNameAloneCountsAsAnEdit() {
 	CHECK(IsEditedBuiltIn(renamed, original));
 }
 
+std::vector<std::string> NamesIn(const std::vector<ColumnDef>& defs) {
+	std::vector<std::string> names;
+	for (const ColumnDef& def : defs) names.push_back(def.name);
+	return names;
+}
+
+void ColumnsFollowTheUsersOrderAndUnnamedOnesComeAfter() {
+	const std::vector<ColumnDef> defs = {
+		{ "Track", "%tracknumber%", ColumnAlignment::Right, 50 },
+		{ "Title", "%title%", ColumnAlignment::Left, 300 },
+		{ "Artist", "%artist%", ColumnAlignment::Left, 200 },
+		{ "Mine", "%mine%", ColumnAlignment::Left, 100 },
+	};
+	const std::vector<std::string> asListed = { "Track", "Title", "Artist", "Mine" };
+	CHECK(NamesIn(OrderColumnDefs(defs, {})) == asListed);
+	const std::vector<std::string> moved = { "Mine", "Title", "Track", "Artist" };
+	CHECK(NamesIn(OrderColumnDefs(defs, moved)) == moved);
+	// "Artist" and "Mine" are not named: a column of a later version, or one from a settings file.
+	const std::vector<std::string> partly = { "Title", "Track", "Artist", "Mine" };
+	CHECK(NamesIn(OrderColumnDefs(defs, { "Title", "Gone", "Track" })) == partly);
+	// A name given twice places its column once, and the column keeps what it is.
+	const std::vector<ColumnDef> twice = OrderColumnDefs(defs, { "Title", "Title" });
+	CHECK(twice.size() == defs.size());
+	CHECK(twice[0].pattern == "%title%");
+}
+
 } // namespace
 
 void RunColumnDefTests() {
+	ColumnsFollowTheUsersOrderAndUnnamedOnesComeAfter();
 	AColumnListSurvivesSerializeAndParse();
 	AnEmptyTextParsesToNoColumns();
 	ATabOrLineBreakInsideAFieldBecomesASpace();

@@ -65,6 +65,7 @@
 #define IDC_PREF_DRAG_COLUMNS       1226
 #define IDC_PREF_TRACK_SUMMARY      1227
 #define IDC_PREF_SUMMARY_PLACE      1228
+#define IDC_PREF_SHOW_HEADERS       1222
 #define IDC_PREF_HEADER_COLOR_CUSTOM 1229
 #define IDC_PREF_LABEL_COLOR_CUSTOM 1230
 #define IDC_PREF_STAR_COLOR_CUSTOM  1231
@@ -79,6 +80,7 @@
 #define IDC_LIKE_COLOR_CUSTOM       1603
 #define IDC_LIKE_SWATCH             1604
 #define IDC_LIKE_COLOR              1605
+#define IDC_PREF_LIKE_STORAGE       1606
 #define IDC_SORT_PATTERN     1501
 
 // One slider and one number box per smooth_scroll::InertiaParams value, in the order of kInertiaSettings.

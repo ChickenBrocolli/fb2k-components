@@ -10,7 +10,7 @@
 // Group presets and the rules for storing and naming them.
 // Standard library only, so the unit tests build without the foobar2000 SDK.
 
-// The preset the Library > GroupPlaylist autoplaylists sorted by play count or date are shown with.
+// The preset that suits a playlist sorted by play count or date, where nearly every track starts a group.
 constexpr char kArtistCoverPresetName[] = "Artist / Cover";
 
 // One way to group a playlist, picked from the Groups menu.

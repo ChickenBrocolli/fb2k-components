@@ -10,11 +10,14 @@
 #include "playlist_view.h"
 #include "preferences_pages.h"
 #include "resource.h"
+#include "text_painter.h"
 #include "ui_language.h"
 
 // Preferences > Tools > GroupPlaylist > Columns.
-// The list holds the built-in columns first, in menu order, then the custom columns.
-// Built-in columns keep their place and cannot be removed, but their shown name, pattern and alignment can be changed.
+// The list holds every column, built-in and custom, in the order of the Columns menu. Move up and Move down change
+// that order for any column. It is the order of the menu and of this list only: each panel keeps the order of the
+// columns it shows.
+// Built-in columns cannot be removed, but their shown name, pattern and alignment can be changed.
 // Restore default puts a built-in column back as it came.
 // The page edits a copy. Apply saves it and updates every panel.
 
@@ -41,6 +44,19 @@ std::vector<std::string> SavedHiddenNames() {
 	return HiddenNames(BuiltInColumnDefsForMenu(LoadHiddenBuiltInColumns()));
 }
 
+std::vector<std::string> NamesOf(const std::vector<ColumnDef>& defs) {
+	std::vector<std::string> names;
+	for (const ColumnDef& def : defs) names.push_back(def.name);
+	return names;
+}
+
+// The columns as they come: the built-in ones as listed in column_def.h, then the default custom ones.
+std::vector<ColumnDef> DefaultColumnDefs() {
+	std::vector<ColumnDef> defs = BuiltInColumnDefs();
+	for (const ColumnDef& def : DefaultCustomColumnDefs()) defs.push_back(def);
+	return defs;
+}
+
 // What the Pattern column of the list says. The Rating and Like columns have no pattern.
 std::string PatternText(const ColumnDef& def) {
 	if (def.kind == ColumnKind::Rating) return Tr("(stars you click to rate)");
@@ -53,8 +69,8 @@ public:
 	enum { IDD = IDD_COLUMNS_PAGE };
 
 	explicit ColumnsDialog(preferences_page_callback::ptr callback)
-		: m_callback(callback), m_reservedNames(BuiltInColumnNames()), m_builtInCount(m_reservedNames.size()) {
-		SetRows(SavedBuiltInColumnDefs(), LoadCustomColumnDefs());
+		: m_callback(callback), m_reservedNames(BuiltInColumnNames()) {
+		SetRows(SavedColumnDefs());
 		s_open = this;
 	}
 	~ColumnsDialog() { if (s_open == this) s_open = nullptr; }
@@ -64,7 +80,7 @@ public:
 
 	// Settings were imported: the page drops its edits and shows the saved columns.
 	void ReloadSaved() {
-		SetRows(SavedBuiltInColumnDefs(), LoadCustomColumnDefs());
+		SetRows(SavedColumnDefs());
 		if (m_hWnd) FillList(FirstCustomRowOr(0));
 		m_callback->on_state_changed();
 	}
@@ -73,7 +89,8 @@ public:
 		t_uint32 state = preferences_state::resettable | preferences_state::dark_mode_supported;
 		const bool changed = SerializeColumnDefs(CustomColumns()) != SerializeColumnDefs(LoadCustomColumnDefs()) ||
 			HiddenBuiltIns() != SavedHiddenNames() ||
-			SerializeBuiltInEdits(BuiltInEdits()) != SerializeBuiltInEdits(BuiltInEditsFrom(BuiltInColumnDefs(), SavedBuiltInColumnDefs()));
+			SerializeBuiltInEdits(BuiltInEdits()) != SerializeBuiltInEdits(BuiltInEditsFrom(BuiltInColumnDefs(), SavedBuiltInColumnDefs())) ||
+			Order() != NamesOf(SavedColumnDefs());
 		if (changed) state |= preferences_state::changed;
 		return state;
 	}
@@ -82,19 +99,22 @@ public:
 		if (!CheckNames()) return;
 		SaveHiddenBuiltInColumns(HiddenBuiltIns());
 		SaveBuiltInColumnEdits(BuiltInEdits());
+		// Before the panels read the columns again (ApplyCustomColumns), so they read them in the new order.
+		SaveColumnOrder(Order());
 		PlaylistView::ApplyCustomColumns(CustomColumns(), Renames());
 		for (Row& row : m_rows) row.originalName = row.def.name;
 		m_callback->on_state_changed();
 	}
 
 	void reset() override {
-		SetRows(BuiltInColumnDefs(), DefaultCustomColumnDefs());
+		SetRows(DefaultColumnDefs());
 		FillList(FirstCustomRowOr(0));
 		m_callback->on_state_changed();
 	}
 
 	BEGIN_MSG_MAP_EX(ColumnsDialog)
 		MSG_WM_INITDIALOG(OnInitDialog)
+		MSG_WM_DRAWITEM(OnDrawItem)
 		NOTIFY_HANDLER_EX(IDC_COLUMN_LIST, LVN_ITEMCHANGED, OnListChanged)
 		COMMAND_HANDLER_EX(IDC_COLUMN_NAME, EN_CHANGE, OnFieldChanged)
 		COMMAND_HANDLER_EX(IDC_COLUMN_PATTERN, EN_CHANGE, OnFieldChanged)
@@ -114,35 +134,68 @@ private:
 		ColumnDef def;
 		// The name the column had when it was last saved. Empty for a column added on this page.
 		std::string originalName;
+		// Set when the row is made and kept while the user types a name, which may for a moment be a built-in one.
+		bool builtIn = false;
 	};
 
-	void SetRows(const std::vector<ColumnDef>& builtInDefs, const std::vector<ColumnDef>& customDefs) {
+	// defs: every column in list order. Saved custom columns never carry a built-in name (LoadCustomColumnDefs).
+	void SetRows(const std::vector<ColumnDef>& defs) {
 		m_rows.clear();
-		for (const ColumnDef& def : builtInDefs) m_rows.push_back({ def, def.name });
-		for (const ColumnDef& def : customDefs) m_rows.push_back({ def, def.name });
+		for (const ColumnDef& def : defs) {
+			const bool builtIn = std::find(m_reservedNames.begin(), m_reservedNames.end(), def.name) != m_reservedNames.end();
+			m_rows.push_back({ def, def.name, builtIn });
+		}
 	}
 
-	bool IsBuiltIn(int index) const { return index >= 0 && static_cast<size_t>(index) < m_builtInCount; }
+	bool IsBuiltIn(int index) const { return index >= 0 && index < static_cast<int>(m_rows.size()) && m_rows[index].builtIn; }
+
+	// The rows of the custom columns, in list order.
+	std::vector<int> CustomRows() const {
+		std::vector<int> rows;
+		for (size_t index = 0; index < m_rows.size(); ++index) {
+			if (!m_rows[index].builtIn) rows.push_back(static_cast<int>(index));
+		}
+		return rows;
+	}
 
 	int FirstCustomRowOr(int fallback) const {
-		return m_rows.size() > m_builtInCount ? static_cast<int>(m_builtInCount) : fallback;
+		const std::vector<int> rows = CustomRows();
+		return rows.empty() ? fallback : rows.front();
 	}
 
 	std::vector<ColumnDef> CustomColumns() const {
 		std::vector<ColumnDef> defs;
-		for (size_t index = m_builtInCount; index < m_rows.size(); ++index) defs.push_back(m_rows[index].def);
+		for (const int index : CustomRows()) defs.push_back(m_rows[index].def);
 		return defs;
 	}
 
-	std::vector<ColumnDef> BuiltInEdits() const {
+	// The built-in columns as edited here, in the order of BuiltInColumnDefs whatever their place in the list, so what
+	// is saved about them does not change when a column only moves.
+	std::vector<ColumnDef> BuiltInRows() const {
 		std::vector<ColumnDef> defs;
-		for (size_t index = 0; index < m_builtInCount && index < m_rows.size(); ++index) defs.push_back(m_rows[index].def);
-		return BuiltInEditsFrom(BuiltInColumnDefs(), defs);
+		for (const std::string& name : m_reservedNames) {
+			for (const Row& row : m_rows) {
+				if (row.builtIn && row.def.name == name) defs.push_back(row.def);
+			}
+		}
+		return defs;
 	}
 
-	// The built-in column as it came. The rows of the built-in columns are in the same order as BuiltInColumnDefs.
+	std::vector<ColumnDef> BuiltInEdits() const { return BuiltInEditsFrom(BuiltInColumnDefs(), BuiltInRows()); }
+
+	// The names of all columns in list order: the order of the Columns menu.
+	std::vector<std::string> Order() const {
+		std::vector<std::string> names;
+		for (const Row& row : m_rows) names.push_back(row.def.name);
+		return names;
+	}
+
+	// The built-in column of a row as it came.
 	ColumnDef OriginalBuiltIn(int index) const {
-		return BuiltInColumnDefs()[static_cast<size_t>(index)];
+		for (const ColumnDef& def : BuiltInColumnDefs()) {
+			if (def.name == m_rows[index].def.name) return def;
+		}
+		return m_rows[index].def;
 	}
 
 	bool IsEditedRow(int index) const {
@@ -153,16 +206,12 @@ private:
 		return Tr(!IsBuiltIn(index) ? "Custom" : IsEditedRow(index) ? "Built-in (edited)" : "Built-in");
 	}
 
-	std::vector<std::string> HiddenBuiltIns() const {
-		std::vector<ColumnDef> defs;
-		for (size_t index = 0; index < m_builtInCount && index < m_rows.size(); ++index) defs.push_back(m_rows[index].def);
-		return HiddenNames(defs);
-	}
+	std::vector<std::string> HiddenBuiltIns() const { return HiddenNames(BuiltInRows()); }
 
 	// Old and new name of every saved custom column that was renamed, so panels keep showing it.
 	std::vector<std::pair<std::string, std::string>> Renames() const {
 		std::vector<std::pair<std::string, std::string>> renames;
-		for (size_t index = m_builtInCount; index < m_rows.size(); ++index) {
+		for (const int index : CustomRows()) {
 			const Row& row = m_rows[index];
 			if (!row.originalName.empty() && row.originalName != row.def.name) renames.push_back({ row.originalName, row.def.name });
 		}
@@ -219,8 +268,8 @@ private:
 		GetDlgItem(IDC_COLUMN_RESTORE).EnableWindow(IsEditedRow(index));
 		// A copy of the Rating or Like column would be an empty text column, because its look comes from code, not a pattern.
 		GetDlgItem(IDC_COLUMN_DUPLICATE).EnableWindow(hasRow && !IsClickColumn(m_rows[index].def.kind));
-		GetDlgItem(IDC_COLUMN_UP).EnableWindow(custom && index > static_cast<int>(m_builtInCount));
-		GetDlgItem(IDC_COLUMN_DOWN).EnableWindow(custom && index + 1 < static_cast<int>(m_rows.size()));
+		GetDlgItem(IDC_COLUMN_UP).EnableWindow(index > 0);
+		GetDlgItem(IDC_COLUMN_DOWN).EnableWindow(hasRow && index + 1 < static_cast<int>(m_rows.size()));
 		UpdatePreview();
 	}
 
@@ -229,10 +278,19 @@ private:
 		std::string text;
 		if (index >= 0) {
 			const ColumnDef& def = m_rows[index].def;
-			if (IsClickColumn(def.kind)) text = Tr("The main page sets where ratings and likes are kept.");
+			if (IsClickColumn(def.kind)) text = Tr("The Ratings and likes page sets where ratings and likes are kept.");
 			else text = DescribePatternPreview(def.pattern.c_str());
 		}
 		uSetDlgItemText(m_hWnd, IDC_COLUMN_PREVIEW, text.c_str());
+		GetDlgItem(IDC_COLUMN_PREVIEW).Invalidate();
+	}
+
+	void OnDrawItem(int id, LPDRAWITEMSTRUCT item) {
+		if (id != IDC_COLUMN_PREVIEW) {
+			SetMsgHandled(FALSE);
+			return;
+		}
+		DrawPreviewText(m_hWnd, *item, m_previewPainter);
 	}
 
 	LRESULT OnListChanged(LPNMHDR header) {
@@ -296,13 +354,13 @@ private:
 		}
 	}
 
-	// A new custom column goes below the selected custom column, or at the end.
+	// A new custom column goes below the selected column, or at the end.
 	void InsertCustom(ColumnDef def) {
 		const int selected = SelectedIndex();
-		const int index = selected >= 0 && !IsBuiltIn(selected) ? selected + 1 : static_cast<int>(m_rows.size());
+		const int index = selected >= 0 ? selected + 1 : static_cast<int>(m_rows.size());
 		def.kind = ColumnKind::Text;
 		def.showInMenu = true;
-		m_rows.insert(m_rows.begin() + index, Row{ def, "" });
+		m_rows.insert(m_rows.begin() + index, Row{ def, "", false });
 		FillList(index);
 		m_callback->on_state_changed();
 		CEdit name(GetDlgItem(IDC_COLUMN_NAME));
@@ -342,11 +400,11 @@ private:
 		m_callback->on_state_changed();
 	}
 
-	// Custom columns move among themselves. The built-in columns keep the menu order.
+	// Any column moves, built-in or custom: the list order is the order of the Columns menu.
 	void OnMove(UINT, int id, CWindow) {
 		const int index = SelectedIndex();
+		if (index < 0) return;
 		const int step = id == IDC_COLUMN_UP ? -1 : 1;
-		if (IsBuiltIn(index) || IsBuiltIn(index + step)) return;
 		const int moved = MoveItem(m_rows, index, step);
 		if (moved == index) return;
 		FillList(moved);
@@ -372,7 +430,7 @@ private:
 			check.problem == ColumnNameProblem::BuiltIn ? "This name belongs to a built-in column. Choose another name. The columns were not saved." :
 			"Two columns have this name. Choose another name. The columns were not saved.");
 		if (m_hWnd != NULL) {
-			m_list.Select(static_cast<int>(m_builtInCount + check.index));
+			m_list.Select(CustomRows()[check.index]);
 			LoadFields();
 			MessageBox(message.c_str(), TrW("Columns").c_str(), MB_OK | MB_ICONWARNING);
 			GetDlgItem(IDC_COLUMN_NAME).SetFocus();
@@ -382,7 +440,6 @@ private:
 
 	const preferences_page_callback::ptr m_callback;
 	const std::vector<std::string> m_reservedNames;
-	const size_t m_builtInCount;
 	std::vector<Row> m_rows;
 	CheckedList m_list;
 	// True while the page itself writes to the fields, so those writes are not read back as edits.
@@ -390,6 +447,8 @@ private:
 	fb2k::CDarkModeHooks m_dark;
 	DarkMode::CHyperLink m_syntaxLink;
 	DialogTexts m_texts;
+	TextPainter m_previewPainter;
+	PreviewTrackWatcher m_previewWatcher{ [this] { if (m_hWnd) UpdatePreview(); } };
 };
 
 class ColumnsPage : public preferences_page_impl<ColumnsDialog> {

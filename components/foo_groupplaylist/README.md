@@ -12,9 +12,8 @@ GroupPlaylist is a 64-bit alternative to SimPlaylist. It is a new program writte
 
 - Groups and labels made from title formatting patterns, with ready-made presets (Album, Album / Disc, Artist / Cover / Album and others), or no grouping at all
 - 23 built-in columns plus your own columns
-- Star ratings you click, and play counts with first and last played dates, kept by GroupPlaylist itself, with no other component needed (ratings can go in the file tags too)
-- Likes: a heart you click in the Like column, or **GroupPlaylist > Like** in any track menu
-- Ready-made autoplaylists in the Library menu: played more than 10 times, played in the last year, never played, liked tracks
+- Star ratings you click and a play count column, kept by the Playback Statistics component (ratings can go in the file tags too)
+- Likes: a heart you click in the Like column
 - Smooth scrolling that glides like a flicked list, with presets you can fine-tune
 - Follows the Default UI colours, fonts and dark mode
 - Colour emoji in titles and tags; album art in WebP and any other format Windows can open, with transparency kept
@@ -67,12 +66,13 @@ Right-click a **column title** to open the panel menu:
 
 | Item | What it does |
 |---|---|
-| **Columns** | Tick the columns to show. **Edit...** opens the Columns preferences page. |
+| **Columns** | Tick the columns to show. They are listed in the order set on the Columns preferences page. **Edit...** opens that page. |
 | **Groups** | Choose how this playlist is grouped. **None** shows a plain track list. **Sort playlist by this preset** sorts the playlist in the preset's order. **Edit...** opens the Groups preferences page. |
 | **Smooth scrolling** | The mouse wheel glides to a stop instead of jumping line by line. On by default. A precision touchpad scrolls as usual. Pick how it feels, **Default**, **Light**, **Heavy** or one of your own presets, and it takes effect at the next turn of the wheel; **Off** turns it off. Numbers you changed on the Scrolling page without saving them as a preset show as **Custom (unsaved)**; picking a preset leaves them behind. **Edit...** opens the Scrolling preferences page. |
-| **Auto-size columns** | The columns fill the panel, so there is no horizontal scroll bar. They keep their proportions when the panel is resized, beside the cover and info columns, which keep their width. Dragging a column's edge moves only the border with the next column. Each panel has its own setting. It is on in a new panel; a panel set up with 0.9.0 keeps it off. |
-| **Drag to reorder columns** | Drag column titles, the empty ones above the covers and the album text too, to put the columns in another order. Turn it off once you like the order, so a click or a resize cannot move a column by accident; widths can still be dragged. On by default. Also on the preferences page. |
-| **Pin group headers** | Keeps the header of the group at the top of the panel while you scroll through it. |
+| **Columns > Auto-size columns** | The columns fill the panel, so there is no horizontal scroll bar. They keep their proportions when the panel is resized, beside the cover and info columns, which keep their width. Dragging a column's edge moves only the border with the next column. Each panel has its own setting. It is on in a new panel; a panel set up with 0.9.0 keeps it off. |
+| **Columns > Drag to reorder columns** | Drag column titles, the empty ones above the covers and the album text too, to put the columns in another order. Turn it off once you like the order, so a click or a resize cannot move a column by accident; widths can still be dragged. On by default. Also on the preferences page. |
+| **Columns > Show column headers** | Untick it to hide the row of column titles for a plainer look. The columns keep their widths and order. This menu opens from the column titles, so to bring them back, tick **Show column headers** on the GroupPlaylist preferences page. |
+| **Smooth scrolling > Pin group headers** | Keeps the header of the group at the top of the panel while you scroll through it. Also on the Scrolling page. |
 
 Other things you can do in the panel:
 
@@ -93,50 +93,49 @@ Open **File > Preferences > Tools > GroupPlaylist**. A change on this page shows
 - **Fonts**: your own fonts for the tracks and for the group headers. Without them the panel uses the Default UI playlist font.
 - **Colours and sizes**: the group header and label text follow foobar2000's highlight colour (Default UI colours) unless you tick **Own header colour** or **Own label colour** and pick one; extra row height, album art size.
 - **Language**: **Automatic** follows the Windows display language (Korean on Korean Windows, English otherwise). **English** and **한국어** choose one. After **Apply** the panel and the page change at once. Reopen Preferences to see the page names in the new language.
-- **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, drag column titles to reorder the columns, dim text in brackets such as `(Remastered)`, show the playing track in bold, and show the track count and length on group headers, on label rows or on both (it can also be turned off).
+- **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, drag column titles to reorder the columns, show or hide the column titles, dim text in brackets such as `(Remastered)`, show the playing track in bold, and show the track count and length on group headers, on label rows or on both (it can also be turned off).
 - **Settings file**: **Export settings...** saves every GroupPlaylist setting to a text file, and **Import settings...** loads one, for a backup or another computer. Per-playlist presets and scroll positions, ratings, and each panel's column layout are not in the file.
 
 Four pages sit below it:
 
-- **Columns**: the built-in columns and your own columns. A built-in column cannot be removed, but you can change its name, pattern and alignment, choose whether it appears in the menu, and put it back with **Restore default**. A column's text is a [title formatting](https://wiki.hydrogenaud.io/index.php?title=Foobar2000:Title_Formatting_Reference) pattern. **Insert field** adds common fields, and the preview shows the result for the focused track.
-- **Ratings and likes**: where ratings and likes are saved: **File tags** (the RATING and LOVED tags), **GroupPlaylist store** (the default; the files are left alone, see [Ratings, likes and play history](#ratings-likes-and-play-history)), or **Both**; this changes on **Apply**. Filled stars take foobar2000's highlight colour, or a colour of your own with **Own star colour**. The hearts of the Like column are drawn as **Colour emoji** ❤️ (the default) or **In the star colour** (or a colour of your own with **Own heart colour**).
+- **Columns**: the built-in columns and your own columns. A built-in column cannot be removed, but you can change its name, pattern and alignment, choose whether it appears in the menu, and put it back with **Restore default**. **Move up** and **Move down** put any column, built-in or your own, where you want it in the panel's Columns menu. The order of the columns a panel shows is set by dragging their titles. A column's text is a [title formatting](https://wiki.hydrogenaud.io/index.php?title=Foobar2000:Title_Formatting_Reference) pattern. **Insert field** adds common fields, and the preview shows the result for the focused track.
+- **Ratings and likes**: where ratings are saved: **File tags** (the RATING tag), **Playback Statistics** (the default; the files are left alone; without that component ratings go to the file tags) or **Both**. And where likes are saved, a choice of their own because Playback Statistics has no likes: **GroupPlaylist store** (the default; the files are left alone), **File tags** (the LOVED tag) or **Both**. See [Ratings, likes and play history](#ratings-likes-and-play-history); both change on **Apply**. Filled stars take foobar2000's highlight colour, or a colour of your own with **Own star colour**. The hearts of the Like column are drawn as **Colour emoji** ❤️ (the default) or **In the star colour** (or a colour of your own with **Own heart colour**).
 - **Groups**: the presets. Each preset has a pattern for the group header, for the cover (tracks with the same value share one cover), for the labels inside a group (one per line), and for its sort order.
 - **Scrolling**: pinned group headers and smooth scrolling (the same switches as in the panel menu), and how the wheel glides: **Default**, **Light** (stops at once, hardly speeds up), **Heavy** (glides long, speeds up a lot when you spin the wheel), or your own sets, made from five numbers. A change shows at once while you scroll; **Apply** keeps it. Once you change a number, the preset list shows **Custom (unsaved)** and offers an unused name such as "Custom preset 1"; **Save as new** keeps the numbers as a preset of their own, and **Overwrite** saves them into your preset they started from.
 
 ## Ratings, likes and play history
 
-GroupPlaylist keeps ratings, likes and play history in its own store inside the foobar2000 profile, so the music files are left alone and no other component is needed.
+Ratings and play history are the Playback Statistics component's (`foo_playcount`), as in foobar2000's other playlist views. GroupPlaylist shows them and sets ratings there, so every other component sees the same values. Likes, which Playback Statistics does not have, are kept by GroupPlaylist itself.
 
-- A track counts as played when foobar2000 says so: after 60 seconds, or at its end when at least a third of it was heard.
-- A track is known by its artist, album and title, so its history stays when the file is moved or renamed. Tracks with the same artist, album and title share it. A track without a title tag is known by its path.
-- The **added** date is set when a track comes into the Media Library. Tracks already in the library get the day GroupPlaylist first started.
-- A like is a heart: click it in the **Like** column (shown in a new panel, and in the Columns menu), or use **GroupPlaylist > Like** and **Unlike** in the track menu of any playlist or library view, for several tracks at once. A like is separate from the rating.
-- Ratings and likes already in the files (the RATING and LOVED tags) show until you change them in GroupPlaylist. After that the store's choice counts, even when you take the rating or the like away. If you used an earlier GroupPlaylist that kept ratings in file tags, it goes on keeping them there; the **Ratings and likes** page changes it.
+- The **Rating** column shows and sets the Playback Statistics rating. Without that component, ratings are read from and written to the files' RATING tags. To use the tags with Playback Statistics installed, choose **File tags** or **Both** on the **Ratings and likes** page. If you used an earlier GroupPlaylist that kept ratings in file tags, it goes on keeping them there.
+- The **Played** column and the other play history fields need Playback Statistics. Without it they are empty.
+- A like is a heart: click it in the **Like** column (shown in a new panel, and in the Columns menu). A like is separate from the rating.
+- Likes are kept in GroupPlaylist's own store inside the foobar2000 profile, so the music files are left alone. With **File tags** or **Both** as the place for likes, they go in the files' LOVED tags. In the store, a track is known by its artist, album and title, so its like stays when the file is moved or renamed. Tracks with the same artist, album and title share it. A track without a title tag is known by its path.
+- Likes already in the files (the LOVED tag) show until you change them in GroupPlaylist. After that the store's choice counts, even when you take the like away.
+- GroupPlaylist 0.10.0 kept ratings and play counts in its own store. It no longer does: ratings given there do not show any more, and the fields `%gp_rating%`, `%gp_play_count%`, `%gp_first_played%`, `%gp_last_played%` and `%gp_added%` are gone. Use the Playback Statistics fields in their place.
 
 The values can be used anywhere in foobar2000 (other columns, searches, autoplaylists, other components):
 
 | Field | Value |
 |---|---|
-| `%gp_rating%` | rating, 1 to 5 |
-| `%gp_play_count%` | number of plays |
-| `%gp_first_played%`, `%gp_last_played%` | first and last played, as `YYYY-MM-DD hh:mm:ss` |
-| `%gp_added%` | when the track came into the Media Library |
+| `%rating%` | rating, 1 to 5 |
+| `%play_count%` | number of plays |
+| `%first_played%`, `%last_played%` | first and last played, as `YYYY-MM-DD hh:mm:ss` |
+| `%added%` | when the track came into the library |
 | `%gp_liked%` | 1 when the track is liked |
 | `%gp_liked_date%` | when the track was liked; none for tracks liked before GroupPlaylist kept the date |
 
-When the Playback Statistics component (`foo_playcount`) is not installed, the first five values also answer to its field names, `%rating%`, `%play_count%`, `%first_played%`, `%last_played%` and `%added%`, so patterns and skins written for it keep working. Where the store has no value, these names show the file's tag of the same name, as they would without GroupPlaylist.
+The first four rows are Playback Statistics fields; the last two are GroupPlaylist's.
 
-**Library > GroupPlaylist** makes four autoplaylists. Each comes in its own order: the most played first, the most recently played first, album order, and the most recently liked first (tracks liked before GroupPlaylist kept the date come last, in album order). While **Remember a preset per playlist** is on, the three lists sorted by count or date are shown with the **Artist / Cover** preset, which suits them: nearly every track starts a group, like a viewing history.
-
-You can make your own in **Library > Search** with queries such as:
+To collect tracks by these values, make an autoplaylist in **Library > Search**: type a query, then choose **Create Autoplaylist** from the **...** button. Some queries:
 
 | Autoplaylist | Query |
 |---|---|
-| Played more than 10 times | `%gp_play_count% GREATER 10` |
-| Played in the last year | `%gp_last_played% DURING LAST 52 WEEKS` |
-| Never played | `%gp_play_count% MISSING` |
-| Liked tracks | `%gp_liked% IS 1` |
-| Rated 4 stars or more | `%gp_rating% GREATER 3` |
+| Played more than 10 times | `%play_count% GREATER 10` |
+| Played in the last year | `%last_played% DURING LAST 52 WEEKS` |
+| Never played | `%play_count% MISSING` |
+| Liked tracks | `%gp_liked% IS 1` (`LOVED IS 1` when likes are saved in file tags only) |
+| Rated 4 stars or more | `%rating% GREATER 3` |
 
 An autoplaylist updates when tracks change. A query on dates, such as the last year, is worked out again then or when foobar2000 starts, so a track can stay in it a little past the date until something changes.
 

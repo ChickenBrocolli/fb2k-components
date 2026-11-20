@@ -52,7 +52,7 @@ public:
 	// Keeps the current preset and returns false when no preset has this name.
 	bool SelectPresetByName(const char* name);
 	// Saves where ratings are kept and makes every panel read them from there.
-	static void ApplyRatingStorage(RatingStorage storage);
+	static void ApplyRatingStorage(RatingStorage ratings, LikeStorage likes);
 	// Saves the look set on the Preferences page and redraws every panel with it.
 	static void ApplyViewSettings(const ViewSettings& settings);
 	// Redraws every panel with these settings without saving them, so the Scrolling page can show a change at once.
@@ -90,12 +90,16 @@ public:
 		MESSAGE_HANDLER(WM_LBUTTONDOWN, OnHeaderButtonDown)
 		MESSAGE_HANDLER(WM_LBUTTONDOWN, OnCoverButtonDown)
 		MESSAGE_HANDLER(WM_LBUTTONDOWN, OnDurationButtonDown)
+		MESSAGE_HANDLER(WM_RBUTTONDOWN, OnPinnedHeaderButton)
+		MESSAGE_HANDLER(WM_RBUTTONDOWN, OnPartRightButtonDown)
+		MESSAGE_HANDLER(WM_LBUTTONUP, OnCoverButtonUp)
 		MESSAGE_HANDLER(WM_LBUTTONUP, OnLabelButtonUp)
 		MESSAGE_HANDLER(kSelectSectionMessage, OnSelectPressedSection)
 		MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnPinnedHeaderButton)
 		MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnStarButtonDown)
 		MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnCoverDoubleClick)
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnCoverWheel)
+		MESSAGE_HANDLER(WM_MOUSEMOVE, OnCoverMouseMove)
 		MESSAGE_HANDLER(WM_MOUSEMOVE, OnStarMouseMove)
 		MESSAGE_HANDLER(WM_MOUSELEAVE, OnStarMouseMove)
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnStarMouseMove)
@@ -164,6 +168,7 @@ protected:
 	uint32_t QueryDragDropTypes() const override { return dragDrop_reorder | dragDrop_external; }
 	dragDropAccept_t DragDropAccept2(IDataObject* data) override;
 	void OnDrop(IDataObject* data, CPoint screenPoint) override;
+	pfc::com_ptr_t<IDataObject> MakeDataObject() override;
 	// Ctrl+C / Ctrl+V and the Copy and Paste items of the track menu.
 	void CopySelection();
 	void PasteClipboard();
@@ -224,12 +229,17 @@ private:
 	LRESULT OnCoverDoubleClick(UINT, WPARAM, LPARAM position, BOOL& handled);
 	LRESULT OnCoverButtonDown(UINT, WPARAM keys, LPARAM position, BOOL& handled);
 	size_t SelectCoverBlock(size_t block);
+	void SelectForMenu(size_t first, size_t count);
+	bool SelectPartWithModifiers(WPARAM keys, size_t first, size_t count);
+	LRESULT OnCoverButtonUp(UINT, WPARAM, LPARAM, BOOL& handled);
+	LRESULT OnCoverMouseMove(UINT, WPARAM buttons, LPARAM position, BOOL& handled);
+	LRESULT OnPartRightButtonDown(UINT, WPARAM, LPARAM position, BOOL& handled);
 	LRESULT OnHeaderButtonDown(UINT, WPARAM keys, LPARAM position, BOOL& handled);
 	LRESULT OnLabelButtonUp(UINT, WPARAM, LPARAM, BOOL& handled);
 	LRESULT OnSelectPressedSection(UINT, WPARAM, LPARAM, BOOL&);
 	// What a drag moves: the selected tracks, a whole album (started on an album header), or one
 	// section under a label row such as "Disc 2" (started on that label).
-	enum class DragUnit { Tracks, Album, Section };
+	enum class DragUnit { Tracks, Album, Section, Cover };
 	std::pair<size_t, size_t> AlbumRangeOf(size_t item) const;
 	std::pair<size_t, size_t> SectionRangeOf(size_t item, size_t level) const;
 	std::optional<size_t> LabelLevelAtPoint(CPoint clientPoint, size_t& item) const;
@@ -248,6 +258,8 @@ private:
 	void SaveTrackColumnWeights();
 	void FitTrackColumns();
 	void ApplyHeaderDragging();
+	static LRESULT CALLBACK HeaderProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR view);
+	CRect GetClientRectHook() const override;
 	HFONT HeaderFont() const;
 	std::string AlbumSummary(size_t baseItem) const;
 	bool IsPlayingItem(size_t item) const;
@@ -331,6 +343,12 @@ private:
 	GUID m_shownPlaylist = pfc::guid_null;
 	// The section under the label row the left button went down on, until the button comes up or a drag starts.
 	std::optional<std::pair<size_t, size_t>> m_pressedSection;
+	// A left press on a cover that has not yet become a click or a drag: where it was, and the cover's tracks.
+	struct CoverPress { CPoint point; size_t first; size_t count; };
+	std::optional<CoverPress> m_coverPress;
+	// True while a drag that started on a cover runs. The list control does not know of it (its own flag for a
+	// drag in progress is private), so DragDropAccept2 says the drop is a move inside the panel.
+	bool m_coverDragActive = false;
 	static constexpr UINT kSelectSectionMessage = WM_APP + 41;
 	// Smooth wheel scrolling (smooth_scroll.h). The helper is made on the first animated wheel turn.
 	static constexpr UINT kSmoothScrollMessage = WM_APP + 42;
