@@ -11,6 +11,8 @@
 // and laid-out lines are kept for reuse, so drawing costs about what GDI's did. The layout uses GDI-compatible
 // metrics and GDI's rendering, so text lines up and looks as GDI text did. When DirectWrite cannot be used
 // (it fails to start, or the font has no DirectWrite counterpart), the text is drawn with GDI.
+// The "Text rendering" setting can ask for GDI (text_rendering.h). Then DirectWrite is not even started, since
+// starting it is what Wine is suspected of crashing in.
 class TextPainter {
 public:
 	enum class Align { Left, Right, Center };
@@ -29,6 +31,8 @@ public:
 
 private:
 	struct DirectWrite;
+	// The DirectWrite drawer when the setting asks for it, made the first time it does. Null for GDI.
+	DirectWrite* Drawer();
 	std::unique_ptr<DirectWrite> m_directWrite;
 };
 

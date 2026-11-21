@@ -1,3 +1,4 @@
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,42 @@ void AColumnListSurvivesSerializeAndParse() {
 	CHECK(parsed[2].name == "Plain");
 	CHECK(parsed[2].pattern.empty());
 	CHECK(parsed[2].alignment == ColumnAlignment::Left);
+}
+
+void AColumnLayoutSurvivesSerializeAndParse() {
+	ColumnLayout layout;
+	layout.coverWidth = 150.5f;
+	layout.infoWidth = 0;
+	layout.columns = { { "Track", 50 }, { "Title / track artist", 300.25f }, { "Duration", 70 } };
+	layout.places = { 2, 0 };
+	const std::optional<ColumnLayout> parsed = ParseColumnLayout(SerializeColumnLayout(layout));
+	CHECK(parsed.has_value());
+	if (!parsed) return;
+	CHECK(parsed->coverWidth == 150.5f);
+	// A zero width is not a width: the default stays.
+	CHECK(parsed->infoWidth == ColumnLayout{}.infoWidth);
+	CHECK(parsed->columns.size() == 3);
+	CHECK(parsed->columns[1].name == "Title / track artist");
+	CHECK(parsed->columns[1].width == 300.25f);
+	CHECK(parsed->places.cover == 2 && parsed->places.info == 0);
+	CHECK(!ParseColumnLayout("").has_value());
+	CHECK(!ParseColumnLayout("Track\t50\n").has_value());
+}
+
+void AnUntouchedLayoutComparesEqual() {
+	ColumnLayout a;
+	a.columns = { { "Track", 50 }, { "Title", 300 } };
+	ColumnLayout b = a;
+	b.columns[1].width = 300.3f;
+	CHECK(SameColumnLayout(a, b));
+	b.columns[1].width = 301;
+	CHECK(!SameColumnLayout(a, b));
+	b = a;
+	std::swap(b.columns[0], b.columns[1]);
+	CHECK(!SameColumnLayout(a, b));
+	b = a;
+	b.places = { 1, 0 };
+	CHECK(!SameColumnLayout(a, b));
 }
 
 void AnEmptyTextParsesToNoColumns() {
@@ -284,6 +321,8 @@ void ColumnsFollowTheUsersOrderAndUnnamedOnesComeAfter() {
 void RunColumnDefTests() {
 	ColumnsFollowTheUsersOrderAndUnnamedOnesComeAfter();
 	AColumnListSurvivesSerializeAndParse();
+	AColumnLayoutSurvivesSerializeAndParse();
+	AnUntouchedLayoutComparesEqual();
 	AnEmptyTextParsesToNoColumns();
 	ATabOrLineBreakInsideAFieldBecomesASpace();
 	AMalformedLineIsSkippedAndTheRestIsKept();

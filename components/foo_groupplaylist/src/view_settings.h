@@ -52,6 +52,9 @@ struct ViewSettings {
 	// The titles carry the panel menu, so they come back from the Preferences page.
 	bool showColumnHeaders = true;
 	bool scrollPerPlaylist = true;
+	// Off by default: every playlist shows the panel's columns, as before. On, a column change made while a playlist
+	// is shown stays with that playlist, and playlists never changed keep the panel's columns.
+	bool columnsPerPlaylist = false;
 	// Off by default: the default layout has a Playing column, which already marks the playing track.
 	bool boldPlaying = false;
 };

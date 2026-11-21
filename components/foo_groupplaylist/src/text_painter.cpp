@@ -18,6 +18,7 @@
 
 #include "emoji_table.h"
 #include "text_painter.h"
+#include "text_rendering.h"
 
 #pragma comment(lib, "dwrite.lib")
 
@@ -545,20 +546,24 @@ struct TextPainter::DirectWrite {
 	}
 };
 
-TextPainter::TextPainter() {
-	if (Factories::Get().ok) m_directWrite = std::make_unique<DirectWrite>();
-}
+TextPainter::TextPainter() = default;
 
 TextPainter::~TextPainter() = default;
 
+TextPainter::DirectWrite* TextPainter::Drawer() {
+	if (!UseDirectWrite()) return nullptr;
+	if (!m_directWrite && Factories::Get().ok) m_directWrite = std::make_unique<DirectWrite>();
+	return m_directWrite.get();
+}
+
 void TextPainter::Draw(CDCHandle dc, std::wstring_view text, const CRect& rect, Align align, bool ellipsis) {
-	if (m_directWrite && m_directWrite->Draw(dc, text, rect, align, ellipsis)) return;
+	if (DirectWrite* drawer = Drawer(); drawer && drawer->Draw(dc, text, rect, align, ellipsis)) return;
 	DrawWithGdi(dc, text, rect, align, ellipsis);
 }
 
 int TextPainter::Width(CDCHandle dc, std::wstring_view text) {
-	if (m_directWrite) {
-		const int width = m_directWrite->Width(dc, text);
+	if (DirectWrite* drawer = Drawer()) {
+		const int width = drawer->Width(dc, text);
 		if (width >= 0) return width;
 	}
 	return WidthWithGdi(dc, text);

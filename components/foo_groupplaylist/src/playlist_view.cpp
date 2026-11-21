@@ -6,6 +6,8 @@
 #include <uxtheme.h>
 #include <vssym32.h>
 
+#include <utility>
+
 #pragma comment(lib, "uxtheme.lib")
 
 #include "column_fit.h"
@@ -16,6 +18,7 @@
 #include "rating_cell.h"
 #include "rating_store.h"
 #include "text_parts.h"
+#include "text_rendering.h"
 #include "ui_language.h"
 
 namespace {
@@ -38,6 +41,7 @@ constexpr int kMinFitColumnWidth = 16;
 constexpr unsigned kPlaylistCallbacks =
 	playlist_callback_single::flag_on_items_added |
 	playlist_callback_single::flag_on_items_reordered |
+	playlist_callback_single::flag_on_items_removing |
 	playlist_callback_single::flag_on_items_removed |
 	playlist_callback_single::flag_on_items_selection_change |
 	playlist_callback_single::flag_on_item_focus_change |
@@ -121,6 +125,35 @@ void PlaylistView::OnCustomColumnsChanged(const std::vector<std::pair<std::strin
 		}
 	}
 	m_columnDefs = SavedColumnDefs();
+	const auto renameIn = [&renames](ColumnLayout& other) {
+		for (ColumnLayout::Column& column : other.columns) {
+			for (const auto& rename : renames) {
+				if (column.name == rename.first) {
+					column.name = rename.second;
+					break;
+				}
+			}
+		}
+	};
+	// The base and the layout on entering the playlist get the same renames and lose the same deleted columns as the
+	// shown layout, so a change the user made before this, not yet stored with the playlist, still counts as a change.
+	if (m_baseLayout) {
+		renameIn(*m_baseLayout);
+		m_baseLayout = WithKnownColumns(*m_baseLayout);
+	}
+	if (m_layoutOnEnter) {
+		renameIn(*m_layoutOnEnter);
+		m_layoutOnEnter = WithKnownColumns(*m_layoutOnEnter);
+	}
+	if (!renames.empty()) {
+		auto playlists = playlist_manager_v5::get();
+		for (t_size playlist = 0; playlist < playlists->get_playlist_count(); ++playlist) {
+			std::optional<ColumnLayout> own = PlaylistColumns(playlist);
+			if (!own) continue;
+			renameIn(*own);
+			SetPlaylistColumns(playlist, *own);
+		}
+	}
 	SetColumnLayout(layout);
 }
 
@@ -158,8 +191,16 @@ void PlaylistView::ToggleColumn(const std::string& name) {
 	if (m_hWnd) RebuildColumns();
 }
 
+// The panel's own layout. With columns remembered per playlist that is the layout of playlists never changed, not
+// the one a playlist with its own columns shows now.
 ColumnLayout PlaylistView::GetColumnLayout() {
-	return CapturedLayout();
+	ColumnLayout layout = CapturedLayout();
+	if (m_baseLayout) {
+		const float coverWidth = layout.coverWidth;
+		layout = *m_baseLayout;
+		layout.coverWidth = coverWidth;
+	}
+	return layout;
 }
 
 // The user reorders columns by dragging header titles, the cover and info columns too. The header control keeps
@@ -202,14 +243,20 @@ CRect PlaylistView::GetClientRectHook() const {
 	return m_settings.showColumnHeaders ? __super::GetClientRectHook() : CListControlImpl::GetClientRectHook();
 }
 
-// Names with no column definition are dropped, so a layout saved with a column that no longer exists still loads.
-void PlaylistView::SetColumnLayout(const ColumnLayout& layout) {
-	m_layout = layout;
-	auto& columns = m_layout.columns;
+// The layout without the names that have no column definition, so a layout saved with a column that no longer exists
+// still loads. The cover and info columns stay beside the same track columns.
+ColumnLayout PlaylistView::WithKnownColumns(ColumnLayout layout) const {
+	auto& columns = layout.columns;
 	std::vector<bool> kept;
 	for (const ColumnLayout::Column& column : columns) kept.push_back(FindColumnDef(column.name) != nullptr);
 	columns.erase(std::remove_if(columns.begin(), columns.end(), [this](const ColumnLayout::Column& column) { return !FindColumnDef(column.name); }), columns.end());
-	m_layout.places = PlacesAfterTrackChange(m_layout.places, kept, 0);
+	// Normalized as the header will show them (RebuildColumns), so the result compares equal to the layout shown.
+	layout.places = NormalizePlaces(columns.size(), PlacesAfterTrackChange(layout.places, kept, 0));
+	return layout;
+}
+
+void PlaylistView::SetColumnLayout(const ColumnLayout& layout) {
+	m_layout = WithKnownColumns(layout);
 	if (m_hWnd) RebuildColumns();
 }
 
@@ -360,8 +407,68 @@ constexpr GUID guid_playlist_preset = { 0x41e6b601, 0x93da, 0x4c7d, { 0xa9, 0xa8
 // Stored in place of a preset name for "None". A preset name never holds this character.
 constexpr char kUngroupedMark[] = "\x01";
 constexpr GUID guid_playlist_scroll = { 0x3a4e2d8c, 0x430b, 0x4a2d, { 0xa1, 0xdc, 0xb8, 0xc2, 0x23, 0xe8, 0xd6, 0x11 } };
+constexpr GUID guid_playlist_columns = { 0x8d3f1b62, 0x5e47, 0x4c0a, { 0xb9, 0x21, 0x6a, 0xe4, 0x0c, 0x97, 0x3d, 0x58 } };
 
 } // namespace
+
+// The columns a playlist remembers (SerializeColumnLayout), or nothing for one that keeps the panel's.
+std::optional<ColumnLayout> PlaylistView::PlaylistColumns(t_size playlist) {
+	pfc::array_t<t_uint8> data;
+	if (!playlist_manager_v2::get()->playlist_get_property(playlist, guid_playlist_columns, data)) return std::nullopt;
+	return ParseColumnLayout(std::string(reinterpret_cast<const char*>(data.get_ptr()), data.get_size()));
+}
+
+void PlaylistView::SetPlaylistColumns(t_size playlist, const ColumnLayout& layout) {
+	const std::string text = SerializeColumnLayout(layout);
+	pfc::array_t<t_uint8> data;
+	data.set_data_fromptr(reinterpret_cast<const t_uint8*>(text.data()), text.size());
+	playlist_manager_v2::get()->playlist_set_property(playlist, guid_playlist_columns, data);
+}
+
+// Columns per playlist (ViewSettings::columnsPerPlaylist). The panel's layout is the base, which playlists never
+// changed show. A playlist that remembers its own columns shows them. What the user changes while a playlist is
+// shown belongs to that playlist alone, and is stored with it when the panel leaves it (LeavePlaylistColumns).
+void PlaylistView::EnterPlaylistColumns() {
+	m_layoutOnEnter.reset();
+	if (!m_settings.columnsPerPlaylist || !m_hWnd) return;
+	auto playlists = playlist_manager_v5::get();
+	const t_size playlist = playlists->get_active_playlist();
+	if (playlist == pfc_infinite) return;
+	if (!m_baseLayout) m_baseLayout = CapturedLayout();
+	const std::optional<ColumnLayout> own = PlaylistColumns(playlist);
+	ColumnLayout wanted = own ? *own : *m_baseLayout;
+	// The cover column is as wide as the album art, a setting of all panels, so it does not go with a playlist.
+	const ColumnLayout shown = CapturedLayout();
+	wanted.coverWidth = shown.coverWidth;
+	if (!SameColumnLayout(shown, wanted)) SetColumnLayout(wanted);
+	m_columnsPlaylist = playlists->playlist_get_guid(playlist);
+	m_layoutOnEnter = CapturedLayout();
+}
+
+// A change since the panel came to the playlist is stored with it. An untouched layout stores nothing, so a
+// playlist only looked at goes on following the panel's columns.
+void PlaylistView::LeavePlaylistColumns() {
+	const std::optional<ColumnLayout> entered = std::exchange(m_layoutOnEnter, std::nullopt);
+	if (!entered || !m_hWnd) return;
+	ColumnLayout now = CapturedLayout();
+	now.coverWidth = entered->coverWidth;
+	if (SameColumnLayout(now, *entered)) return;
+	const t_size playlist = playlist_manager_v5::get()->find_playlist_by_guid(m_columnsPlaylist);
+	if (playlist != pfc_infinite) SetPlaylistColumns(playlist, now);
+}
+
+// The setting turned on: the shown layout becomes the base. Turned off: a pending change is stored, and the panel
+// goes on with the columns it shows.
+void PlaylistView::SyncColumnsPerPlaylist() {
+	if (m_settings.columnsPerPlaylist == m_layoutOnEnter.has_value()) return;
+	if (m_settings.columnsPerPlaylist) {
+		m_baseLayout.reset();
+		EnterPlaylistColumns();
+	} else {
+		LeavePlaylistColumns();
+		m_baseLayout.reset();
+	}
+}
 
 void PlaylistView::ChoosePreset(size_t index) {
 	if (index >= m_presets.size()) return;
@@ -520,6 +627,11 @@ void PlaylistView::ReloadCover(size_t block) {
 	Invalidate();
 }
 
+void PlaylistView::ReloadAllCovers() {
+	m_covers.Clear();
+	Invalidate();
+}
+
 // Opens the folder of the block's first track in Explorer, with that file selected.
 void PlaylistView::OpenCoverFolder(size_t block) {
 	metadb_handle_ptr track;
@@ -619,6 +731,7 @@ void PlaylistView::AttachToPlaylist() {
 	set_callback_flags(kPlaylistCallbacks);
 	play_callback_reregister(kPlaybackCallbacks);
 	ApplyPlaylistPreset();
+	EnterPlaylistColumns();
 	OnPlaylistContentChanged();
 	RestoreScrollPosition();
 }
@@ -793,21 +906,32 @@ bool PlaylistView::GetTooltipData(CPoint pointAbs, pfc::string_base& text, CRect
 	return true;
 }
 
-// The header's own title text is cleared, and each title is drawn after Windows has drawn the item's background,
-// hover and sort arrow, so titles go through the same painter as the rest of the panel and show colour emoji.
-// The list control keeps its own copy of every title (GetColumnText) and never reads the header's text back.
+// With DirectWrite the header's own title text is cleared, and each title is drawn after Windows has drawn the item's
+// background, hover and sort arrow, so titles go through the same painter as the rest of the panel and show colour
+// emoji. The list control keeps its own copy of every title (GetColumnText) and never reads the header's text back.
+// With GDI the header writes its own titles. Under Wine the drawing over the item does not happen, and cleared
+// titles stayed blank (Hydrogenaudio paregistrase #18).
 void PlaylistView::ClearHeaderTitles() {
 	CHeaderCtrl header = GetHeaderCtrl();
+	const bool painterDraws = UseDirectWrite();
 	const int count = header.GetItemCount();
 	for (int index = 0; index < count; ++index) {
+		pfc::string8 title;
+		if (!painterDraws && static_cast<size_t>(index) < GetColumnCount()) GetColumnText(static_cast<size_t>(index), title);
+		const pfc::stringcvt::string_os_from_utf8 wide(title);
 		HDITEM item = {};
 		item.mask = HDI_TEXT;
-		item.pszText = const_cast<LPWSTR>(L"");
+		item.pszText = const_cast<LPWSTR>(wide.get_ptr());
 		header.SetItem(index, &item);
 	}
 }
 
 LRESULT PlaylistView::OnChildCustomDraw(int, LPNMHDR header, BOOL& handled) {
+	// With GDI the header and the tooltip draw their text themselves (ClearHeaderTitles).
+	if (!UseDirectWrite()) {
+		handled = FALSE;
+		return 0;
+	}
 	if (IsHeaderEnabled() && header->hwndFrom == GetHeaderCtrl().m_hWnd) return DrawHeaderItem(*reinterpret_cast<NMCUSTOMDRAW*>(header));
 	wchar_t className[32] = {};
 	if (GetClassNameW(header->hwndFrom, className, 32) && wcscmp(className, TOOLTIPS_CLASSW) == 0) {
@@ -1321,11 +1445,9 @@ void PlaylistView::RenderCover(size_t block, const CRect& blockRect, CDCHandle d
 
 	metadb_handle_ptr track;
 	if (!m_playlists->activeplaylist_get_item_handle(track, m_groups.BlockAt(block).firstItem)) return;
+	// A block without a cover, or whose cover is still loading, shows nothing there, as the original SimPlaylist did.
 	const HBITMAP cover = m_covers.Get(track, size);
-	if (!cover) {
-		dc.FillSolidRect(CRect(origin, CSize(size, size)), PaintUtils::BlendColor(GetSysColorHook(colorText), GetSysColorHook(colorBackground), 8));
-		return;
-	}
+	if (!cover) return;
 	BITMAP dimensions = {};
 	if (!GetObject(cover, sizeof(dimensions), &dimensions)) return;
 	CDC memory;
@@ -1363,7 +1485,9 @@ void PlaylistView::OnDestroy() {
 	// The timing thread sends frames to this window, so it stops before the window goes away.
 	StopSmoothScroll();
 	SaveScrollPosition();
+	LeavePlaylistColumns();
 	ClaimEditContext(false);
+	ClaimSelection(false);
 	set_callback_flags(0);
 	play_callback_reregister(0);
 	SetMsgHandled(FALSE);
@@ -1371,6 +1495,7 @@ void PlaylistView::OnDestroy() {
 
 LRESULT PlaylistView::OnFocusChange(UINT message, WPARAM, LPARAM, BOOL& handled) {
 	ClaimEditContext(message == WM_SETFOCUS);
+	ClaimSelection(message == WM_SETFOCUS);
 	handled = FALSE;
 	return 0;
 }
@@ -1386,10 +1511,27 @@ void PlaylistView::ClaimEditContext(bool claim) {
 	if (claim) m_editContext = manager->set_context_active_playlist();
 }
 
+// The shared selection, as the SDK asks of a window with selectable items: taken with the focus, set to track
+// the playlist selection, and let go with the focus (ui.h, ui_selection_holder).
+void PlaylistView::ClaimSelection(bool claim) {
+	m_selectionHolder.release();
+	if (!claim) return;
+	m_selectionHolder = ui_selection_manager::get()->acquire();
+	m_selectionHolder->set_playlist_selection_tracking();
+}
+
 // User-defined keyboard shortcuts take priority over the built-in keys, as in the default playlist view.
 LRESULT PlaylistView::OnShortcutKey(UINT, WPARAM key, LPARAM, BOOL& handled) {
-	handled = (keyboard_shortcut_manager::get()->on_keydown_auto_playlist(key) || RunEditKey(key) || RunPageKey(key)) ? TRUE : FALSE;
+	handled = (keyboard_shortcut_manager::get()->on_keydown_auto_playlist(key) || RunEditKey(key) || RunPageKey(key) || RunRefreshKey(key)) ? TRUE : FALSE;
 	return 0;
+}
+
+// F5 reads every cover again, as other playlist views do, for covers added or changed on disk.
+// A user who bound F5 to a command in Preferences > Keyboard Shortcuts keeps it: those run first.
+bool PlaylistView::RunRefreshKey(WPARAM key) {
+	if (key != VK_F5 || GetHotkeyModifierFlags() != 0) return false;
+	ReloadAllCovers();
+	return true;
 }
 
 // Page Up and Page Down move the focus by one window height in pixels.
@@ -1799,7 +1941,7 @@ void PlaylistView::ApplyCoverColumnWidth() {
 
 // The wheel without Ctrl or Shift, while smooth scrolling is on, starts or extends an animation (smooth_scroll.h).
 // A precision touchpad, a held mouse button (a drag), and a list that does not scroll go on to the list control.
-LRESULT PlaylistView::OnSmoothWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled) {
+LRESULT PlaylistView::OnSmoothWheel(UINT, WPARAM wheel, LPARAM point, BOOL& handled) {
 	handled = FALSE;
 	if (!m_settings.smoothScroll) return 0;
 	const WORD keys = GET_KEYSTATE_WPARAM(wheel);
@@ -1813,10 +1955,23 @@ LRESULT PlaylistView::OnSmoothWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled) {
 			[this](int position) {
 				pfc::vartoggle_t<bool> moving(m_animatingWheel, true);
 				MoveViewOrigin(CPoint(GetViewOrigin().x, position));
+				// The list control shifts the old pixels and leaves the uncovered rows erased, to be painted before
+				// its next move. That is a frame later here, so they would show as a blank band for a whole frame.
+				// They are painted now, within this frame.
+				UpdateWindow();
 			});
 	}
 	const int wheelDelta = GET_WHEEL_DELTA_WPARAM(wheel);
-	if (!m_smoothScroll->ShouldAnimateWheel(wheelDelta)) return 0;
+	if (!m_smoothScroll->ShouldAnimateWheel(wheelDelta)) {
+		// A touchpad's many small messages already move smoothly. With smooth scrolling on, the list control would
+		// add its own 50 ms glide to each one, and it waits out that glide every time: the view falls behind the
+		// fingers and the animation frames wait too. So the list control scrolls this message without it.
+		pfc::vartoggle_t<bool> plain(m_plainWheel, true);
+		LRESULT result = 0;
+		CListControlWithSelectionBase::ProcessWindowMessage(m_hWnd, WM_MOUSEWHEEL, wheel, point, result);
+		handled = TRUE;
+		return result;
+	}
 	UINT lines = 3;
 	SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
 	m_smoothScroll->DeltaScroll(smooth_scroll::WheelPixels(wheelDelta, lines, GetItemHeight(), client.Height()), LiveInertiaParams());
@@ -1880,6 +2035,7 @@ void PlaylistView::ShowViewSettings(const ViewSettings& settings) {
 		view->m_settings = settings;
 		if (!view->m_settings.smoothScroll) view->StopSmoothScroll();
 		if (!view->m_hWnd) continue;
+		view->SyncColumnsPerPlaylist();
 		view->m_layout = view->CapturedLayout();
 		view->m_layout.coverWidth = static_cast<float>(view->m_settings.coverSize + 2 * kCoverInset);
 		view->ApplyFonts();
@@ -2112,6 +2268,9 @@ PlaylistView::dragDropAccept_t PlaylistView::DragDropAccept2(IDataObject* data) 
 		accept.showDropMark = true;
 		return accept;
 	}
+	// A locked playlist (an autoplaylist, for one) that takes no added tracks shows the no-drop cursor,
+	// as the right-click menu greys out Paste for it (track_menu.cpp). The drop would add nothing.
+	if ((m_playlists->activeplaylist_lock_get_filter_mask() & playlist_lock::filter_add) != 0) return accept;
 	if (playlist_incoming_item_filter::get()->process_dropped_files_check(data)) {
 		accept.dwEFfect = DROPEFFECT_COPY;
 		accept.showDropMark = true;
@@ -2173,9 +2332,48 @@ void PlaylistView::on_items_reordered(const t_size*, t_size) {
 	OnRowsMoved();
 }
 
-void PlaylistView::on_items_removed(const bit_array&, t_size, t_size) {
+// The row at the top of the view, while the rows are still those it was measured in.
+void PlaylistView::on_items_removing(const bit_array&, t_size oldCount, t_size) {
+	m_topBeforeRemoval.reset();
+	if (!m_hWnd || oldCount == 0 || oldCount != GetItemCount()) return;
+	const int viewTop = GetViewOrigin().y;
+	const size_t top = IndexFromPointAbs(viewTop);
+	if (top < oldCount) m_topBeforeRemoval = TopRow{ top, GetItemOffsetAbs(top) - viewTop };
+}
+
+void PlaylistView::on_items_removed(const bit_array& removed, t_size oldCount, t_size) {
 	if (!m_sorting) m_headerSort.Forget();
 	OnRowsMoved();
+	if (const std::optional<TopRow> before = std::exchange(m_topBeforeRemoval, std::nullopt)) KeepTopRow(*before, removed, oldCount);
+}
+
+// After rows were removed the view keeps what was in it: the row that was at the top stays where it was.
+// When that row went too, the first remaining row after it comes to the top with its album header, or the top of the
+// playlist when nothing after it remains. Without this the list control only clamps the old position. A library viewer
+// that narrows its playlist to an album removes the other tracks and moves neither the focus nor the view, so the
+// album was shown from its end, often past it (Hydrogenaudio paregistrase #18).
+void PlaylistView::KeepTopRow(const TopRow& before, const bit_array& removed, size_t oldCount) {
+	if (!m_hWnd || GetItemCount() == 0) return;
+	size_t removedBefore = 0;
+	for (size_t row = 0; row < before.row && row < oldCount; ++row) if (removed[row]) ++removedBefore;
+	if (!removed[before.row]) {
+		const size_t row = before.row - removedBefore;
+		MoveViewOrigin(CPoint(GetViewOrigin().x, GetItemOffsetAbs(row) - before.offset));
+		return;
+	}
+	size_t next = before.row;
+	while (next < oldCount && removed[next]) {
+		++removedBefore;
+		++next;
+	}
+	if (next >= oldCount) {
+		MoveViewOrigin(CPoint(GetViewOrigin().x, 0));
+		return;
+	}
+	const size_t row = next - removedBefore;
+	int top = GetItemOffsetAbs(row);
+	if (row == 0 || GetItemGroup(row) != GetItemGroup(row - 1)) top -= GetGroupHeaderHeight();
+	MoveViewOrigin(CPoint(GetViewOrigin().x, top));
 }
 
 void PlaylistView::on_items_selection_change(const bit_array& affected, const bit_array& state) {
@@ -2216,8 +2414,10 @@ void PlaylistView::on_item_ensure_visible(t_size index) {
 void PlaylistView::on_playlist_switch() {
 	m_headerSort.Forget();
 	SaveScrollPosition();
+	LeavePlaylistColumns();
 	m_selectionStart = SIZE_MAX;
 	ApplyPlaylistPreset();
+	EnterPlaylistColumns();
 	OnRowsMoved();
 	RestoreScrollPosition();
 }

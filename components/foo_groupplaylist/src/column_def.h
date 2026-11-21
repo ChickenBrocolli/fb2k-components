@@ -1,7 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -244,6 +246,46 @@ inline std::vector<ColumnDef> ParseColumnDefs(const std::string& text) {
 		defs.push_back(def);
 	}
 	return defs;
+}
+
+// Text form of a column layout (tab_lines.h), kept with a playlist that remembers its own columns. The first line is
+// "layout", the cover and info widths and their places; each further line a track column's name and width.
+inline std::string SerializeColumnLayout(const ColumnLayout& layout) {
+	std::string out = JoinFieldLine({ "layout", std::to_string(layout.coverWidth), std::to_string(layout.infoWidth),
+		std::to_string(layout.places.cover), std::to_string(layout.places.info) });
+	for (const ColumnLayout::Column& column : layout.columns) out += JoinFieldLine({ column.name, std::to_string(column.width) });
+	return out;
+}
+
+// Nothing when the text is not a layout. A column line without a name or a width is skipped.
+inline std::optional<ColumnLayout> ParseColumnLayout(const std::string& text) {
+	const std::vector<std::vector<std::string>> lines = SplitFieldLines(text);
+	if (lines.empty() || lines[0].size() < 5 || lines[0][0] != "layout") return std::nullopt;
+	ColumnLayout layout;
+	const float cover = static_cast<float>(std::atof(lines[0][1].c_str()));
+	const float info = static_cast<float>(std::atof(lines[0][2].c_str()));
+	if (cover > 0) layout.coverWidth = cover;
+	if (info > 0) layout.infoWidth = info;
+	layout.places = { static_cast<size_t>(std::strtoul(lines[0][3].c_str(), nullptr, 10)), static_cast<size_t>(std::strtoul(lines[0][4].c_str(), nullptr, 10)) };
+	for (size_t index = 1; index < lines.size(); ++index) {
+		const std::vector<std::string>& fields = lines[index];
+		if (fields.size() < 2 || fields[0].empty()) continue;
+		const float width = static_cast<float>(std::atof(fields[1].c_str()));
+		layout.columns.push_back({ fields[0], width > 0 ? width : 100.f });
+	}
+	layout.places = NormalizePlaces(layout.columns.size(), layout.places);
+	return layout;
+}
+
+// The same columns in the same order and places, with widths within half a pixel: the header reads widths back
+// as fractions of a pixel, so a layout that was not touched compares equal to itself.
+inline bool SameColumnLayout(const ColumnLayout& a, const ColumnLayout& b) {
+	const auto within = [](float x, float y) { return std::fabs(x - y) < 0.5f; };
+	if (a.columns.size() != b.columns.size() || !(a.places == b.places) || !within(a.coverWidth, b.coverWidth) || !within(a.infoWidth, b.infoWidth)) return false;
+	for (size_t index = 0; index < a.columns.size(); ++index) {
+		if (a.columns[index].name != b.columns[index].name || !within(a.columns[index].width, b.columns[index].width)) return false;
+	}
+	return true;
 }
 
 // A panel layout names its columns, so every column name must be non-empty and unique.

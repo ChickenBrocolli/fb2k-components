@@ -92,18 +92,18 @@ struct WheelHistory {
 };
 
 // Precision touchpads send many small wheel messages, which already scroll smoothly, and those are not animated.
-// Which device sent a message is not in the message, so it is guessed from the size and timing of the messages.
+// Which device sent a message is not in the message, so it is guessed from its size: a mouse wheel moves in whole
+// notches (multiples of 120). A whole-notch message among a touchpad's messages (within 2.5 seconds of one) is the
+// touchpad too. The time between messages is not used: when painting is slow, a touchpad's messages arrive far apart.
 inline bool ShouldAnimateWheel(WheelHistory& history, int wheelDelta, uint64_t nowTickMs) {
 	const std::optional<uint64_t> lastTick = history.lastTickMs;
 	const std::optional<int> lastDelta = history.lastDelta;
 	history.lastTickMs = nowTickMs;
 	history.lastDelta = wheelDelta;
 
-	if (std::abs(wheelDelta) < kWheelDelta) return false;
-	const bool coarse = wheelDelta % kWheelDelta == 0;
-	if (!lastTick || nowTickMs - *lastTick >= 2500) return coarse;
-	if (coarse && (!lastDelta || *lastDelta % kWheelDelta == 0)) return true;
-	return nowTickMs - *lastTick > 50;
+	if (wheelDelta == 0 || wheelDelta % kWheelDelta != 0) return false;
+	if (!lastTick || nowTickMs - *lastTick >= 2500) return true;
+	return !lastDelta || *lastDelta % kWheelDelta == 0;
 }
 
 // Pixels the view moves for a wheel message, as the list control moves it without smooth scrolling:

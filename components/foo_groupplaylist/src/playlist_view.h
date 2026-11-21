@@ -46,6 +46,7 @@ public:
 	// The cover block under a point in client coordinates, if the point is on a cover.
 	std::optional<size_t> CoverBlockAt(CPoint clientPoint) const;
 	void ReloadCover(size_t block);
+	void ReloadAllCovers();
 	void OpenCoverFolder(size_t block);
 	// Sorts the playlist by the sort pattern of the active preset.
 	void SortByActivePreset();
@@ -72,6 +73,7 @@ public:
 	// Reads the widths the user dragged, so call it when saving.
 	ColumnLayout GetColumnLayout();
 	void SetColumnLayout(const ColumnLayout& layout);
+	ColumnLayout WithKnownColumns(ColumnLayout layout) const;
 	// "Auto-size columns": the track columns fill the panel beside the cover and info columns,
 	// in the proportions of their saved widths. On for a new panel; a panel saved before it existed keeps it off.
 	bool IsAutoSizeColumns() const { return m_autoSizeColumns; }
@@ -123,8 +125,8 @@ protected:
 	int GetGroupHeaderHeight() const override;
 	int GetItemHeight() const override;
 	// A wheel animation moves the view itself, one display frame at a time, so the list control's own short
-	// animation is left out of those moves. Keys and scroll bar arrows still use it.
-	bool UserEnabledSmoothScroll() const override { return m_settings.smoothScroll && !m_animatingWheel; }
+	// animation is left out of those moves, and out of touchpad wheel moves too. Keys and scroll bar arrows still use it.
+	bool UserEnabledSmoothScroll() const override { return m_settings.smoothScroll && !m_animatingWheel && !m_plainWheel; }
 	void RenderGroupHeaderText2(size_t baseItem, const CRect& headerRect, const CRect& updateRect, CDCHandle dc) override;
 	// The track counts at the right end of the headers and labels follow the window's width,
 	// so a change of width repaints the whole list, not only the uncovered strip.
@@ -216,8 +218,10 @@ private:
 	int RatingOf(size_t item, size_t subItem) const;
 	void WriteRatingOf(size_t item, int rating);
 	void ClaimEditContext(bool claim);
+	void ClaimSelection(bool claim);
 	bool RunEditKey(WPARAM key);
 	bool RunPageKey(WPARAM key);
+	bool RunRefreshKey(WPARAM key);
 	void MoveFocusWithModifiers(t_size index);
 	void RebuildGroups();
 	void OnPlaylistContentChanged();
@@ -284,6 +288,7 @@ private:
 
 	void on_items_added(t_size base, metadb_handle_list_cref items, const bit_array& selection) override;
 	void on_items_reordered(const t_size* order, t_size count) override;
+	void on_items_removing(const bit_array& mask, t_size oldCount, t_size newCount) override;
 	void on_items_removed(const bit_array& mask, t_size oldCount, t_size newCount) override;
 	void on_items_selection_change(const bit_array& affected, const bit_array& state) override;
 	void on_item_focus_change(t_size from, t_size to) override;
@@ -359,7 +364,9 @@ private:
 	std::optional<SmoothScrollHelper> m_smoothScroll;
 	// True while the helper moves the view, so that move does not end the animation.
 	bool m_animatingWheel = false;
-	LRESULT OnSmoothWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled);
+	// True while the list control scrolls for a touchpad wheel message, so it adds no glide of its own (OnSmoothWheel).
+	bool m_plainWheel = false;
+	LRESULT OnSmoothWheel(UINT, WPARAM wheel, LPARAM point, BOOL& handled);
 	LRESULT OnSmoothScrollFrame(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnSmoothScrollTimer(UINT, WPARAM timer, LPARAM, BOOL& handled);
 	void StopSmoothScroll();
@@ -371,4 +378,25 @@ private:
 	size_t m_groupFocus = SIZE_MAX;
 	t_size m_selectionStart = SIZE_MAX;
 	std::optional<t_uint32> m_editContext;
+	// Held while the panel has the focus, so panels that show the selected tracks (Selection Properties,
+	// Album Art set to the selection) follow this playlist's selection.
+	ui_selection_holder::ptr m_selectionHolder;
+	// The row at the top of the view before rows are removed, and how far its top was from the view's top
+	// (on_items_removing, KeepTopRow).
+	struct TopRow {
+		size_t row;
+		int offset;
+	};
+	std::optional<TopRow> m_topBeforeRemoval;
+	// Columns per playlist (EnterPlaylistColumns). The base is the panel's layout, set while the setting is on.
+	// The layout on entering is set while a playlist is shown with the setting on, and tells a change apart.
+	std::optional<ColumnLayout> m_baseLayout;
+	std::optional<ColumnLayout> m_layoutOnEnter;
+	GUID m_columnsPlaylist = pfc::guid_null;
+	static std::optional<ColumnLayout> PlaylistColumns(t_size playlist);
+	static void SetPlaylistColumns(t_size playlist, const ColumnLayout& layout);
+	void EnterPlaylistColumns();
+	void LeavePlaylistColumns();
+	void SyncColumnsPerPlaylist();
+	void KeepTopRow(const TopRow& before, const bit_array& removed, size_t oldCount);
 };

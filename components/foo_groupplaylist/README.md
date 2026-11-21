@@ -88,12 +88,13 @@ Other things you can do in the panel:
 
 ## Settings
 
-Open **File > Preferences > Tools > GroupPlaylist**. A change on this page shows in the panels at once, so you can try it out. **Apply** or **OK** saves it, and **Cancel** puts the saved settings back. **Language** changes only on **Apply**.
+Open **File > Preferences > Tools > GroupPlaylist**. A change on this page shows in the panels at once, so you can try it out. **Apply** or **OK** saves it, and **Cancel** puts the saved settings back. **Language** and **Text rendering** change only on **Apply**.
 
 - **Fonts**: your own fonts for the tracks and for the group headers. Without them the panel uses the Default UI playlist font.
 - **Colours and sizes**: the group header and label text follow foobar2000's highlight colour (Default UI colours) unless you tick **Own header colour** or **Own label colour** and pick one; extra row height, album art size.
 - **Language**: **Automatic** follows the Windows display language (Korean on Korean Windows, English otherwise). **English** and **한국어** choose one. After **Apply** the panel and the page change at once. Reopen Preferences to see the page names in the new language.
-- **Behaviour**: remember the group preset and the scroll position of each playlist, sort by clicking a column title, drag column titles to reorder the columns, show or hide the column titles, dim text in brackets such as `(Remastered)`, show the playing track in bold, and show the track count and length on group headers, on label rows or on both (it can also be turned off).
+- **Text rendering**: **Automatic (recommended)** draws text with DirectWrite, which shows colour emoji, and switches to GDI when foobar2000 runs under Wine (Linux, or macOS through CrossOver and the like), where DirectWrite can crash and leave the column titles blank. **DirectWrite** and **GDI** choose one. GDI shows emoji in black and white. After **Apply** the panels change at once.
+- **Behaviour**: remember the group preset, the scroll position and the column layout of each playlist (the column layout is off by default; when on, a column change stays with the playlist it was made in, and playlists never changed keep the panel's columns), sort by clicking a column title, drag column titles to reorder the columns, show or hide the column titles, dim text in brackets such as `(Remastered)`, show the playing track in bold, and show the track count and length on group headers, on label rows or on both (it can also be turned off).
 - **Settings file**: **Export settings...** saves every GroupPlaylist setting to a text file, and **Import settings...** loads one, for a backup or another computer. Per-playlist presets and scroll positions, ratings, and each panel's column layout are not in the file.
 
 Four pages sit below it:

@@ -174,13 +174,16 @@ private:
 
 	// The menu of a cover. A right click elsewhere in the list shows the track menu.
 	void RunCoverMenu(CPoint screenPoint, size_t block) {
-		enum : UINT { kReloadCommand = 1, kOpenFolderCommand };
+		enum : UINT { kReloadCommand = 1, kReloadAllCommand, kOpenFolderCommand };
 		CMenu menu;
 		menu.CreatePopupMenu();
 		menu.AppendMenu(MF_STRING, kReloadCommand, TrW("Reload album art").c_str());
+		// The key is shown beside the item, so the menu teaches it.
+		menu.AppendMenu(MF_STRING, kReloadAllCommand, TrW("Reload all album art\tF5").c_str());
 		menu.AppendMenu(MF_STRING, kOpenFolderCommand, TrW("Open containing folder").c_str());
 		const UINT command = static_cast<UINT>(menu.TrackPopupMenu(TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, screenPoint.x, screenPoint.y, m_hWnd));
 		if (command == kReloadCommand) ReloadCover(block);
+		else if (command == kReloadAllCommand) ReloadAllCovers();
 		else if (command == kOpenFolderCommand) OpenCoverFolder(block);
 	}
 

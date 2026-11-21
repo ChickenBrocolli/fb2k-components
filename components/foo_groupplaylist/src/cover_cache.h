@@ -23,6 +23,8 @@ public:
 
 	// Drops the covers of the track's file at every size, so the next Get reads the file again.
 	void Forget(const metadb_handle_ptr& track);
+	// Drops every cover, so each is read from its file again when it is next drawn.
+	void Clear();
 
 private:
 	struct Entry {

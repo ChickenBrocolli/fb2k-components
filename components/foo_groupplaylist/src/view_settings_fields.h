@@ -99,6 +99,7 @@ void VisitViewSettings(Visit&& visit) {
 	visit(IntField{ "coverSize", 9, Page::Main, &ViewSettings::coverSize, kMinCoverSize, kMaxCoverSize });
 	visit(BoolField{ "presetPerPlaylist", 10, Page::Main, &ViewSettings::presetPerPlaylist });
 	visit(BoolField{ "scrollPerPlaylist", 13, Page::Main, &ViewSettings::scrollPerPlaylist });
+	visit(BoolField{ "columnsPerPlaylist", 37, Page::Main, &ViewSettings::columnsPerPlaylist });
 	visit(BoolField{ "sortOnHeaderClick", 12, Page::Main, &ViewSettings::sortOnHeaderClick });
 	visit(BoolField{ "dragColumns", 25, Page::Main, &ViewSettings::dragColumns });
 	visit(BoolField{ "showColumnHeaders", 36, Page::Main, &ViewSettings::showColumnHeaders });

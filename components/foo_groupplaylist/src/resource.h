@@ -60,6 +60,8 @@
 #define IDC_PREF_SCROLL_PER_LIST    1220
 #define IDC_PREF_BOLD_PLAYING       1221
 #define IDC_PREF_LANGUAGE           1223
+#define IDC_PREF_TEXT_RENDERING     1249
+#define IDC_PREF_COLUMNS_PER_LIST   1248
 #define IDC_PREF_EXPORT             1224
 #define IDC_PREF_IMPORT             1225
 #define IDC_PREF_DRAG_COLUMNS       1226

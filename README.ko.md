@@ -6,11 +6,11 @@ foobar2000 64비트용 컴포넌트 모음입니다. 모두 처음부터 새로 
 
 | 컴포넌트 | 설명 | 버전 |
 |---|---|---|
-| [GroupPlaylist](components/foo_groupplaylist/README.ko.md) (`foo_groupplaylist`) | 곡을 앨범 같은 단위로 묶고 묶음마다 앨범아트를 보여 주는 재생목록 보기. SimPlaylist의 64비트 대안. | 0.10.1 |
+| [GroupPlaylist](components/foo_groupplaylist/README.ko.md) (`foo_groupplaylist`) | 곡을 앨범 같은 단위로 묶고 묶음마다 앨범아트를 보여 주는 재생목록 보기. SimPlaylist의 64비트 대안. | 0.10.2 |
 
 ![GroupPlaylist](components/foo_groupplaylist/screenshots/overview.png)
 
-컴포넌트는 [Releases](https://github.com/ChickenBrocolli/fb2k-components/releases) 페이지에서 받습니다. 릴리스 이름에는 컴포넌트 이름이 붙습니다(예: `foo_groupplaylist-v0.10.1`). 설치와 사용법은 각 컴포넌트의 README에 있습니다.
+컴포넌트는 [Releases](https://github.com/ChickenBrocolli/fb2k-components/releases) 페이지에서 받습니다. 릴리스 이름에는 컴포넌트 이름이 붙습니다(예: `foo_groupplaylist-v0.10.2`). 설치와 사용법은 각 컴포넌트의 README에 있습니다.
 
 이 컴포넌트들은 대신하려는 원래 컴포넌트의 원작자와 관계가 없습니다.
 

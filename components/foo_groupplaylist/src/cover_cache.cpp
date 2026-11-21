@@ -111,6 +111,11 @@ void CoverCache::Forget(const metadb_handle_ptr& track) {
 	}
 }
 
+// Loads still running finish into no entry and throw their images away, as after Forget.
+void CoverCache::Clear() {
+	m_entries.clear();
+}
+
 void CoverCache::FinishLoad(const std::string& key, HBITMAP bitmap) {
 	const auto found = m_entries.find(key);
 	if (found == m_entries.end()) {

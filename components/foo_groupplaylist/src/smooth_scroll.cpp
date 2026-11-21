@@ -100,6 +100,7 @@ void SmoothScrollTimingThread::Start(std::function<void()> onTick) {
 			FrameTimeMinimum refreshTimes;
 			double lastRefresh = NowMs() - 16.0;
 			double refreshTime = 0;
+			bool wasActive = false;
 
 			const auto waitForRefresh = [&] {
 				if (!output || FAILED(output->WaitForVBlank())) DwmFlush();
@@ -116,14 +117,20 @@ void SmoothScrollTimingThread::Start(std::function<void()> onTick) {
 				if (stop.stop_requested()) break;
 
 				if (m_active.load(std::memory_order_acquire)) {
+					// A new animation is not slowed by how long the frames of an earlier one took.
+					if (!wasActive) paintTimes = FrameTimeAverager();
+					wasActive = true;
 					if (!needToSleep) {
-						// When painting takes more than half a refresh, every other refresh (or more) is skipped.
-						const int skip = (std::max)(0, static_cast<int>(paintTimes.Average() * 2 / refreshTimes.Minimum()));
+						// When painting takes longer than a refresh, the refreshes it covers are skipped. (ui_helpers skips
+						// already at half a refresh; on a laptop whose frames take 9 ms at 60 Hz that halved the frame rate.)
+						const int skip = (std::max)(0, static_cast<int>(paintTimes.Average() / refreshTimes.Minimum()));
 						for (int i = 0; i < skip && !stop.stop_requested(); ++i) waitForRefresh();
 					}
 					const double frameStart = NowMs();
 					onTick();
 					paintTimes.Add(NowMs() - frameStart);
+				} else {
+					wasActive = false;
 				}
 				if (needToSleep) Sleep(15);
 			}

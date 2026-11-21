@@ -13,6 +13,7 @@
 #include "preset_store.h"
 #include "rating_store.h"
 #include "settings_file.h"
+#include "text_rendering.h"
 #include "ui_language.h"
 #include "view_settings.h"
 #include "view_settings_fields.h"
@@ -81,6 +82,7 @@ std::string ExportSettingsText() {
 	out.AddInt("ratingStorage", static_cast<int>(GetRatingStorage()));
 	out.AddInt("likeStorage", static_cast<int>(GetLikeStorage()));
 	out.AddInt("language", static_cast<int>(GetUiLanguage()));
+	out.AddInt("textRendering", static_cast<int>(GetTextRendering()));
 	out.AddBool("durationCountsDown", GetDurationCountsDown());
 
 	out.Comment("Scrolling");
@@ -126,6 +128,10 @@ bool ImportSettingsText(const std::string& text) {
 	int language = static_cast<int>(GetUiLanguage());
 	in.Int("language", language, 0, 2);
 	SetUiLanguage(static_cast<UiLanguage>(language));
+
+	int rendering = static_cast<int>(GetTextRendering());
+	in.Int("textRendering", rendering, 0, 2);
+	SetTextRendering(static_cast<TextRendering>(rendering));
 
 	smooth_scroll::InertiaParams params = LoadInertiaParams();
 	for (size_t index = 0; index < std::size(kInertiaSettings); ++index) in.Number(kInertiaKeys[index], params.*kInertiaSettings[index].field);

@@ -17,6 +17,13 @@ void AMouseWheelIsAnimatedAndATouchpadIsNot() {
 	CHECK(!ShouldAnimateWheel(touchpad, 45, 1008));
 	// A large touchpad message right after small ones is not animated either.
 	CHECK(!ShouldAnimateWheel(touchpad, 150, 1016));
+	// Nor one that comes long after the last, as a touchpad's do while painting is slow.
+	CHECK(!ShouldAnimateWheel(touchpad, 3287, 1316));
+	// A whole-notch message among a touchpad's is the touchpad too.
+	CHECK(!ShouldAnimateWheel(touchpad, 240, 1400));
+	// After 2.5 quiet seconds a whole notch is a mouse wheel again, and so is the next one.
+	CHECK(ShouldAnimateWheel(touchpad, -120, 4000));
+	CHECK(ShouldAnimateWheel(touchpad, -120, 4040));
 }
 
 void TheWheelDistanceFollowsTheWindowsSetting() {

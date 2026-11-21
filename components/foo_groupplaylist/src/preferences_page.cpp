@@ -7,6 +7,7 @@
 #include "preferences_pages.h"
 #include "resource.h"
 #include "settings_transfer.h"
+#include "text_rendering.h"
 #include "ui_language.h"
 #include "view_settings.h"
 #include "view_settings_fields.h"
@@ -14,20 +15,21 @@
 namespace {
 
 // The page edits a copy, which the panels show at once (ShowPreferencesPreview). Apply saves the copy; closing
-// Preferences without Apply leaves the saved settings. The language changes only on Apply.
+// Preferences without Apply leaves the saved settings. The language and the text rendering change only on Apply.
 // Smooth scrolling and header pinning belong to the Scrolling page, and the star colour and the hearts to the
 // Ratings and likes page; this page leaves them as saved.
 struct PageValues {
 	ViewSettings view;
 	UiLanguage language;
+	TextRendering rendering;
 
 	bool operator==(const PageValues& other) const {
-		return language == other.language && SameSettings(view, other.view, SettingsPage::Main);
+		return language == other.language && rendering == other.rendering && SameSettings(view, other.view, SettingsPage::Main);
 	}
 };
 
 PageValues SavedValues() {
-	return { LoadViewSettings(), GetUiLanguage() };
+	return { LoadViewSettings(), GetUiLanguage(), GetTextRendering() };
 }
 
 // foobar2000's highlight colour (Default UI colours), which the group header and label text use without their own.
@@ -100,7 +102,8 @@ public:
 	void apply() override {
 		const bool languageChanged = m_values.language != GetUiLanguage();
 		if (languageChanged) SetUiLanguage(m_values.language);
-		// This also redraws the column titles and track counts, so a new language shows in every panel.
+		SetTextRendering(m_values.rendering);
+		// This also redraws the column titles and track counts, so a new language or text rendering shows in every panel.
 		ViewSettings view = m_values.view;
 		KeepOtherPagesParts(LoadViewSettings(), view);
 		PlaylistView::ApplyViewSettings(view);
@@ -113,7 +116,7 @@ public:
 	}
 
 	void reset() override {
-		m_values = { DefaultViewSettings(), UiLanguage::Automatic };
+		m_values = { DefaultViewSettings(), UiLanguage::Automatic, TextRendering::Automatic };
 		ShowValues();
 		ShowPreferencesPreview();
 		m_callback->on_state_changed();
@@ -135,6 +138,7 @@ public:
 		COMMAND_ID_HANDLER_EX(IDC_PREF_DRAG_COLUMNS, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SHOW_HEADERS, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SCROLL_PER_LIST, OnCheckChanged)
+		COMMAND_ID_HANDLER_EX(IDC_PREF_COLUMNS_PER_LIST, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_BOLD_PLAYING, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_TRACK_FONT_BUTTON, OnChooseFont)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_HEADER_FONT_BUTTON, OnChooseFont)
@@ -143,6 +147,7 @@ public:
 		COMMAND_HANDLER_EX(IDC_PREF_ROW_PADDING, EN_CHANGE, OnNumberChanged)
 		COMMAND_HANDLER_EX(IDC_PREF_COVER_SIZE, EN_CHANGE, OnNumberChanged)
 		COMMAND_HANDLER_EX(IDC_PREF_LANGUAGE, CBN_SELCHANGE, OnLanguageChanged)
+		COMMAND_HANDLER_EX(IDC_PREF_TEXT_RENDERING, CBN_SELCHANGE, OnTextRenderingChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_EXPORT, OnExport)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_IMPORT, OnImport)
 	END_MSG_MAP()
@@ -163,13 +168,13 @@ private:
 	// Not applied: the panels show the saved settings again. Nothing is redrawn when the page shows no edit.
 	void OnDestroy() {
 		const PageValues saved = SavedValues();
-		const bool edited = !(PageValues{ WithEdits(saved.view), saved.language } == saved);
+		const bool edited = !(PageValues{ WithEdits(saved.view), saved.language, saved.rendering } == saved);
 		m_previewing = false;
 		if (edited) ShowPreferencesPreview();
 		SetMsgHandled(FALSE);
 	}
 
-	// The texts of the two drop-down lists, in the current language. ShowValues selects the saved items.
+	// The texts of the drop-down lists, in the current language. ShowValues selects the saved items.
 	void FillChoices() {
 		CRect box;
 		// The order follows UiLanguage.
@@ -180,6 +185,15 @@ private:
 		language.AddString(L"한국어");
 		language.GetWindowRect(box);
 		language.SetDroppedWidth(box.Width() * 3 / 2);
+		// The order follows TextRendering. The names are for those who know them (a Wine user asks for GDI); what
+		// each choice does is beside it, and the first one says to leave it if unsure.
+		CComboBox rendering(GetDlgItem(IDC_PREF_TEXT_RENDERING));
+		rendering.ResetContent();
+		rendering.AddString(TrW("Automatic (recommended)").c_str());
+		rendering.AddString(TrW("DirectWrite: colour emoji").c_str());
+		rendering.AddString(TrW("GDI: compatible, emoji in black and white").c_str());
+		rendering.GetWindowRect(box);
+		rendering.SetDroppedWidth(box.Width() * 5 / 2);
 		// The order follows TrackSummaryPlace.
 		CComboBox summaryPlace(GetDlgItem(IDC_PREF_SUMMARY_PLACE));
 		summaryPlace.ResetContent();
@@ -204,11 +218,13 @@ private:
 		CheckDlgButton(IDC_PREF_DRAG_COLUMNS, view.dragColumns ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_SHOW_HEADERS, view.showColumnHeaders ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_SCROLL_PER_LIST, view.scrollPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_COLUMNS_PER_LIST, view.columnsPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_BOLD_PLAYING, view.boldPlaying ? BST_CHECKED : BST_UNCHECKED);
 		// The spin buttons own the number in their edit box, so the number is set through them.
 		CUpDownCtrl(GetDlgItem(IDC_PREF_ROW_PADDING_SPIN)).SetPos32(view.rowPadding);
 		CUpDownCtrl(GetDlgItem(IDC_PREF_COVER_SIZE_SPIN)).SetPos32(view.coverSize);
 		CComboBox(GetDlgItem(IDC_PREF_LANGUAGE)).SetCurSel(static_cast<int>(m_values.language));
+		CComboBox(GetDlgItem(IDC_PREF_TEXT_RENDERING)).SetCurSel(static_cast<int>(m_values.rendering));
 		m_showing = wasShowing;
 		ShowFontsAndColors();
 	}
@@ -249,6 +265,7 @@ private:
 		case IDC_PREF_DRAG_COLUMNS: view.dragColumns = checked; break;
 		case IDC_PREF_SHOW_HEADERS: view.showColumnHeaders = checked; break;
 		case IDC_PREF_SCROLL_PER_LIST: view.scrollPerPlaylist = checked; break;
+		case IDC_PREF_COLUMNS_PER_LIST: view.columnsPerPlaylist = checked; break;
 		case IDC_PREF_BOLD_PLAYING: view.boldPlaying = checked; break;
 		}
 		Changed();
@@ -277,6 +294,12 @@ private:
 	void OnLanguageChanged(UINT, int, CWindow) {
 		const int index = CComboBox(GetDlgItem(IDC_PREF_LANGUAGE)).GetCurSel();
 		if (index >= 0) m_values.language = static_cast<UiLanguage>(index);
+		m_callback->on_state_changed();
+	}
+
+	void OnTextRenderingChanged(UINT, int, CWindow) {
+		const int index = CComboBox(GetDlgItem(IDC_PREF_TEXT_RENDERING)).GetCurSel();
+		if (index >= 0) m_values.rendering = static_cast<TextRendering>(index);
 		m_callback->on_state_changed();
 	}
 

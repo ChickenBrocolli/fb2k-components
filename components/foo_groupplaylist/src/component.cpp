@@ -22,7 +22,7 @@ std::string AboutText() {
 
 } // namespace
 
-DECLARE_COMPONENT_VERSION("GroupPlaylist", "0.10.1", AboutText().c_str());
+DECLARE_COMPONENT_VERSION("GroupPlaylist", "0.10.2", AboutText().c_str());
 
 VALIDATE_COMPONENT_FILENAME("foo_groupplaylist.dll");
 
