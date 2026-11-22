@@ -82,7 +82,7 @@ Other things you can do in the panel:
 - Right-click the tracks for **Play**, **Remove**, **Crop**, **Sort**, **Cut**, **Copy** and **Paste**, followed by the usual foobar2000 commands. **Sort** changes the order of the selected tracks only: by a title formatting pattern you type, at random, reversed, or by album, artist, file path, title or track number. **Edit > Undo** (Ctrl+Z) undoes these changes.
 - Double-click a group header to play the group.
 - Drag a group header or a disc label to move the whole group or disc. A group goes only between groups, a disc only between discs.
-- Click a column title to sort the playlist by that column, and click again to reverse. Click the empty title above the covers, or pick a preset under **Groups** right after such a sort, to return to the preset's order. **Edit > Undo** (Ctrl+Z) undoes a sort.
+- Click a column title to sort the playlist by that column, and click again to reverse. A small arrow on the title shows the direction for a few seconds. Click the empty title above the covers, or pick a preset under **Groups** right after such a sort, to return to the preset's order. **Edit > Undo** (Ctrl+Z) undoes a sort.
 - Hold **Ctrl** and turn the mouse wheel to make the album art larger or smaller, or drag the right edge of the empty title above the covers.
 - Drag the empty title above the covers, or the one above the album text beside them, to move that column anywhere among the other columns, for example the covers to the right end. Each panel keeps its own order.
 - On the playing track, click the **Duration** cell to switch between the time played and the time left.
@@ -109,7 +109,7 @@ Four pages sit below it:
 
 Ratings and play history are the Playback Statistics component's (`foo_playcount`), as in foobar2000's other playlist views. GroupPlaylist shows them and sets ratings there, so every other component sees the same values. Likes, which Playback Statistics does not have, are kept by GroupPlaylist itself.
 
-- The **Rating** column shows and sets the Playback Statistics rating. Without that component, ratings are read from and written to the files' RATING tags. To use the tags with Playback Statistics installed, choose **File tags** or **Both** on the **Ratings and likes** page. If you used an earlier GroupPlaylist that kept ratings in file tags, it goes on keeping them there.
+- The **Rating** column shows and sets the Playback Statistics rating. Click a star to rate the track; click the same star again, or the gap before the first star, to remove the rating. Without that component, ratings are read from and written to the files' RATING tags. To use the tags with Playback Statistics installed, choose **File tags** or **Both** on the **Ratings and likes** page. If you used an earlier GroupPlaylist that kept ratings in file tags, it goes on keeping them there.
 - The **Played** column and the other play history fields need Playback Statistics. Without it they are empty.
 - A like is a heart: click it in the **Like** column (shown in a new panel, and in the Columns menu). A like is separate from the rating.
 - Likes are kept in GroupPlaylist's own store inside the foobar2000 profile, so the music files are left alone. With **File tags** or **Both** as the place for likes, they go in the files' LOVED tags. In the store, a track is known by its artist, album and title, so its like stays when the file is moved or renamed. Tracks with the same artist, album and title share it. A track without a title tag is known by its path.

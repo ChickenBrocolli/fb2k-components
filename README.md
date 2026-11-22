@@ -6,11 +6,11 @@ Components for foobar2000 64-bit, written from scratch.
 
 | Component | What it is | Version |
 |---|---|---|
-| [GroupPlaylist](components/foo_groupplaylist/README.md) (`foo_groupplaylist`) | A playlist view that groups tracks, for example by album, with the album art beside each group. A 64-bit alternative to SimPlaylist. | 0.11.0 |
+| [GroupPlaylist](components/foo_groupplaylist/README.md) (`foo_groupplaylist`) | A playlist view that groups tracks, for example by album, with the album art beside each group. A 64-bit alternative to SimPlaylist. | 0.11.1 |
 
 ![GroupPlaylist](components/foo_groupplaylist/screenshots/overview.png)
 
-Download a component from the [Releases](https://github.com/ChickenBrocolli/fb2k-components/releases) page. Each release is named after its component, for example `foo_groupplaylist-v0.11.0`. How to install and use each component is in its own README.
+Download a component from the [Releases](https://github.com/ChickenBrocolli/fb2k-components/releases) page. Each release is named after its component, for example `foo_groupplaylist-v0.11.1`. How to install and use each component is in its own README.
 
 These components are not affiliated with the authors of the components they replace.
 

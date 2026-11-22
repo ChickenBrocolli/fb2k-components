@@ -131,6 +131,7 @@ public:
 		MESSAGE_HANDLER(kColumnDragEndedMessage, OnColumnDragEnded)
 		MESSAGE_HANDLER(kColumnSlideMessage, OnColumnSlideFrame)
 		MESSAGE_HANDLER(kEffectFrameMessage, OnEffectFrame)
+		MESSAGE_HANDLER(WM_TIMER, OnSortIndicatorTimer)
 		MESSAGE_HANDLER(WM_TIMER, OnSmoothScrollTimer)
 		CHAIN_MSG_MAP(CListControlWithSelectionBase)
 	END_MSG_MAP()
@@ -526,6 +527,12 @@ private:
 	LRESULT OnSmoothScrollFrame(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnSmoothScrollTimer(UINT, WPARAM timer, LPARAM, BOOL& handled);
 	void StopSmoothScroll();
+	// The sort arrow a header click puts on its column goes away after this long (OnColumnHeaderClick).
+	static constexpr UINT_PTR kSortIndicatorTimer = 0x47505341;
+	static constexpr UINT kSortIndicatorMs = 3000;
+	LRESULT OnSortIndicatorTimer(UINT, WPARAM timer, LPARAM, BOOL& handled);
+	void HideSortIndicator();
+	void ForgetHeaderSort();
 	// Total length in seconds of each album, in album order.
 	std::vector<double> m_albumSeconds;
 	// Total length of the items before each item, one more entry than items, so a range sums in one step.

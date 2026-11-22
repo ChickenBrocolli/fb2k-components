@@ -901,6 +901,9 @@ bool PlaylistView::FitTrackColumns(bool updateView) {
 
 void PlaylistView::RebuildColumns() {
 	FinishColumnWidthSlide();
+	// The star preview and the pop name their cell by column number, which may now belong to another column or to none.
+	m_starHover.MoveTo(std::nullopt);
+	m_pop.reset();
 	ResetColumns(false);
 	m_listColumns.clear();
 	auto compiler = titleformat_compiler::get();
@@ -988,6 +991,30 @@ void PlaylistView::OnColumnHeaderClick(t_size listColumn) {
 	if (!def) return;
 	const bool descending = m_headerSort.Click(def->name, ActivePlaylistGuid());
 	SortPlaylist(SortPattern(*def), descending);
+	// The arrow shows which way the click sorted, then goes: the playlist is not kept sorted, so a lasting arrow would mislead.
+	SetSortIndicator(listColumn, !descending);
+	SetTimer(kSortIndicatorTimer, kSortIndicatorMs);
+}
+
+LRESULT PlaylistView::OnSortIndicatorTimer(UINT, WPARAM timer, LPARAM, BOOL& handled) {
+	if (timer != kSortIndicatorTimer) {
+		handled = FALSE;
+		return 0;
+	}
+	HideSortIndicator();
+	return 0;
+}
+
+void PlaylistView::HideSortIndicator() {
+	if (!m_hWnd) return;
+	KillTimer(kSortIndicatorTimer);
+	if (IsHeaderEnabled()) ClearSortIndicator();
+}
+
+// The playlist is no longer in the order of the last header click, so its arrow goes too.
+void PlaylistView::ForgetHeaderSort() {
+	m_headerSort.Forget();
+	HideSortIndicator();
 }
 
 namespace {
@@ -1246,7 +1273,7 @@ void PlaylistView::OpenCoverFolder(size_t block) {
 }
 
 void PlaylistView::SortByActivePreset() {
-	m_headerSort.Forget();
+	ForgetHeaderSort();
 	SortPlaylist(m_presets[m_activePreset].sortPattern.c_str(), false);
 }
 
@@ -2675,7 +2702,7 @@ LRESULT PlaylistView::OnStarMouseMove(UINT message, WPARAM buttons, LPARAM posit
 	return 0;
 }
 
-// A click on a star, or on the gap before the first star, rates the track and goes no further, so it neither changes the selection
+// A click on a star, or on the gap before the first star, rates the track (RatingAfterClick) and goes no further, so it neither changes the selection
 // nor starts a drag. The second press of a double click is dropped, because passed on it would start playback.
 LRESULT PlaylistView::OnStarButtonDown(UINT message, WPARAM, LPARAM position, BOOL& handled) {
 	const std::optional<StarPosition> hit = StarAtPoint(CPoint(position));
@@ -2689,8 +2716,9 @@ LRESULT PlaylistView::OnStarButtonDown(UINT message, WPARAM, LPARAM position, BO
 			WriteLikeOf(hit->item, hit->rating != 0);
 			if (hit->rating != 0) StartPop(hit->item, hit->subItem, 0);
 		} else {
-			WriteRatingOf(hit->item, hit->rating);
-			if (hit->rating > 0) StartPop(hit->item, hit->subItem, hit->rating);
+			const int rating = RatingAfterClick(hit->rating, RatingOf(hit->item, hit->subItem));
+			WriteRatingOf(hit->item, rating);
+			if (rating > 0) StartPop(hit->item, hit->subItem, rating);
 		}
 		// The cell now shows the new value; the pointer previews the next click only after it moves.
 		MoveStarHover(std::nullopt);
@@ -3464,12 +3492,12 @@ void PlaylistView::ExecuteDefaultAction(t_size index) {
 // Any change of order this view did not make itself (a drag, another sort, added or removed tracks)
 // ends the order of the header click. Ctrl+Z arrives as a playlist switch (on_playlist_switch).
 void PlaylistView::on_items_added(t_size, metadb_handle_list_cref, const bit_array&) {
-	if (!m_sorting) m_headerSort.Forget();
+	if (!m_sorting) ForgetHeaderSort();
 	OnRowsMoved();
 }
 
 void PlaylistView::on_items_reordered(const t_size*, t_size) {
-	if (!m_sorting) m_headerSort.Forget();
+	if (!m_sorting) ForgetHeaderSort();
 	OnRowsMoved();
 }
 
@@ -3481,7 +3509,7 @@ void PlaylistView::on_items_removing(const bit_array&, t_size oldCount, t_size) 
 }
 
 void PlaylistView::on_items_removed(const bit_array& removed, t_size oldCount, t_size) {
-	if (!m_sorting) m_headerSort.Forget();
+	if (!m_sorting) ForgetHeaderSort();
 	OnRowsMoved();
 	if (const std::optional<TopRow> before = std::exchange(m_topBeforeRemoval, std::nullopt)) KeepTopRow(*before, removed, oldCount);
 }
@@ -3551,7 +3579,7 @@ void PlaylistView::on_item_ensure_visible(t_size index) {
 // The view still shows the old playlist's rows here, so its scroll position is saved first.
 // Undo and redo also arrive here, and they end the order of a header click as well.
 void PlaylistView::on_playlist_switch() {
-	m_headerSort.Forget();
+	ForgetHeaderSort();
 	SaveScrollPosition();
 	LeavePlaylistColumns();
 	m_selectionStart = SIZE_MAX;

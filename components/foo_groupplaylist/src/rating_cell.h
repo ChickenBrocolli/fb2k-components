@@ -7,7 +7,7 @@
 
 // The rules of the rating column. A cell holds an empty gap and then five star slots of equal width.
 // The pointer shows the rating it points at, and a click saves that rating: a star sets 1 to 5,
-// the gap sets 0, which removes the rating.
+// the gap sets 0, which removes the rating. A click on the star of the saved rating removes it too.
 // Standard library only, so the unit tests build without the foobar2000 SDK.
 
 constexpr int kMaxRating = 5;
@@ -33,6 +33,11 @@ inline std::optional<int> RatingAtOffset(int offset, int gapWidth, int slotWidth
 	const int star = (offset - gapWidth) / slotWidth + 1;
 	if (star > kMaxRating) return std::nullopt;
 	return star;
+}
+
+// The rating a click saves, given the rating pointed at and the one saved.
+inline int RatingAfterClick(int pointed, int saved) {
+	return pointed == saved ? 0 : pointed;
 }
 
 // The rating under the pointer in one cell of the rating column.

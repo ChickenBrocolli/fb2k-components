@@ -75,6 +75,18 @@ void StayingOnTheSameRatingNeedsNoRepaint() {
 	CHECK(!hover.MoveTo(StarPosition{ 4, 7, 2 }));
 }
 
+void AClickOnTheSavedStarRemovesTheRating() {
+	CHECK(RatingAfterClick(3, 3) == 0);
+	CHECK(RatingAfterClick(5, 5) == 0);
+}
+
+void AClickOnAnotherStarOrTheGapSavesWhatItPointsAt() {
+	CHECK(RatingAfterClick(3, 0) == 3);
+	CHECK(RatingAfterClick(2, 4) == 2);
+	CHECK(RatingAfterClick(0, 4) == 0);
+	CHECK(RatingAfterClick(0, 0) == 0);
+}
+
 } // namespace
 
 void RunRatingCellTests() {
@@ -88,4 +100,6 @@ void RunRatingCellTests() {
 	OtherCellsShowTheirSavedRating();
 	MovingAwayShowsTheSavedRatingAgain();
 	StayingOnTheSameRatingNeedsNoRepaint();
+	AClickOnTheSavedStarRemovesTheRating();
+	AClickOnAnotherStarOrTheGapSavesWhatItPointsAt();
 }
