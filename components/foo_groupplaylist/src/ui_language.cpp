@@ -54,6 +54,13 @@ std::string TrackCount(size_t tracks) {
 
 namespace {
 
+// Room beside a measured label text, in pixels at 96 DPI: a little after the text, and after a check box square the
+// gap Windows leaves before its text.
+constexpr int kTextSlackAt96Dpi = 2;
+constexpr int kCheckBoxGapAt96Dpi = 6;
+// "Closely after" is within about two characters of the dialog font: a horizontal dialog unit is a quarter of one.
+constexpr int kFollowerGapDialogUnits = 8;
+
 // A static text or a check box or radio button is a label. One whose text is one line, starting at the left, can be
 // narrowed to its text. Group boxes, push buttons, centred, right-aligned and wrapping texts keep their size.
 void ClassifyLabel(HWND window, const RECT& place, bool& label, bool& fits, bool& checkBox) {
@@ -109,9 +116,9 @@ int NeededWidth(HWND window, bool checkBox) {
 	const int dpi = ::GetDeviceCaps(dc, LOGPIXELSX);
 	::SelectObject(dc, old);
 	::ReleaseDC(window, dc);
-	int width = measured.right - measured.left + MulDiv(2, dpi, 96);
+	int width = measured.right - measured.left + MulDiv(kTextSlackAt96Dpi, dpi, 96);
 	// foobar2000 runs at the system scaling, which the system metrics follow.
-	if (checkBox) width += ::GetSystemMetrics(SM_CXMENUCHECK) + MulDiv(6, dpi, 96);
+	if (checkBox) width += ::GetSystemMetrics(SM_CXMENUCHECK) + MulDiv(kCheckBoxGapAt96Dpi, dpi, 96);
 	return width;
 }
 
@@ -177,8 +184,7 @@ void DialogTexts::FitLabels() {
 		boxes.push_back({ place.left, place.top, place.right, place.bottom });
 		controlOf.push_back(i);
 	}
-	// "Closely after" is within about two characters of the dialog font.
-	RECT gap = { 0, 0, 8, 0 };
+	RECT gap = { 0, 0, kFollowerGapDialogUnits, 0 };
 	::MapDialogRect(m_dialog, &gap);
 	const FitResult fit = ::FitLabels(boxes, labels, gap.right);
 	for (size_t b = 0; b < boxes.size(); ++b) {

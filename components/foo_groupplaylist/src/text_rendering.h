@@ -8,7 +8,6 @@ enum class TextRendering { Automatic = 0, DirectWrite = 1, Gdi = 2 };
 TextRendering GetTextRendering();
 void SetTextRendering(TextRendering rendering);
 
-// True when foobar2000 runs under Wine.
 bool RunningOnWine();
 
 // Whether text is drawn with DirectWrite now: the setting, with Automatic resolved.

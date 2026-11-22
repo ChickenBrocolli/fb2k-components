@@ -22,7 +22,7 @@ void PanelSettingsChanged();
 // While Preferences is open, every change on the main page and the Scrolling page shows in the panels at once:
 // the panels show the saved settings with the unapplied edits of both pages on top. Apply saves them, and a page
 // closed without Apply leaves the panels with the saved settings again.
-void ShowPreferencesPreview();
+void ShowPreferencesPreview(PreviewChange change = PreviewChange::Any);
 
 // The Scrolling page's part of the preview (scrolling_page.cpp). view comes back unchanged when the page is not shown.
 ViewSettings WithScrollingPageEdits(const ViewSettings& view);

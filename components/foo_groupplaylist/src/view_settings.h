@@ -34,6 +34,9 @@ struct ViewSettings {
 	COLORREF likeColor = kHeartRedColor;
 	int rowPadding = kDefaultRowPadding;
 	int coverSize = kDefaultCoverSize;
+	// Off by default: a group whose track has no album art shows nothing there, as asked after 0.10.1. On, it shows
+	// foobar2000's stub image, the picture its preferences set for missing album art.
+	bool stubForMissingArt = false;
 	// Behaviour.
 	// On by default: a playlist keeps the preset picked for it, and one never given a preset shows the panel's.
 	// So it changes nothing until a preset is picked.
@@ -48,6 +51,9 @@ struct ViewSettings {
 	// On by default: column titles drag to reorder the columns. Off locks the order once the user likes it,
 	// as foobar2000 locks its layout outside layout editing mode. Widths can still be dragged.
 	bool dragColumns = true;
+	// On by default: while a column title is dragged, the column follows the mouse and the others slide aside. Off,
+	// the columns just change places. Shown beside dragColumns as a choice of two.
+	bool animateColumnMoves = true;
 	// On by default. Off hides the row of column titles for a plain look; the columns keep their widths and order.
 	// The titles carry the panel menu, so they come back from the Preferences page.
 	bool showColumnHeaders = true;
@@ -58,6 +64,9 @@ struct ViewSettings {
 	// Off by default: the default layout has a Playing column, which already marks the playing track.
 	bool boldPlaying = false;
 };
+
+// What a change of the view settings changed. A cover size alone lets a panel keep its columns and groups.
+enum class PreviewChange { Any, CoverSizeOnly };
 
 // A font kept at 96 DPI, sized for drawing at dpi, and back.
 inline LOGFONTW FontAtDpi(LOGFONTW font, int dpi) {

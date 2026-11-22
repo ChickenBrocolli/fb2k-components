@@ -78,6 +78,7 @@ std::string ExportSettingsText() {
 	SettingsWriter out;
 	out.Comment("Look and behaviour");
 	WriteViewSettings(out, view, SettingsPage::Main);
+	WriteViewSettings(out, view, SettingsPage::PanelMenu);
 	WriteViewSettings(out, view, SettingsPage::Ratings);
 	out.AddInt("ratingStorage", static_cast<int>(GetRatingStorage()));
 	out.AddInt("likeStorage", static_cast<int>(GetLikeStorage()));
@@ -106,6 +107,8 @@ std::string ExportSettingsText() {
 
 	out.Comment("Group presets: name, sort, header, cover, flags, labels");
 	out.AddList("groupPresets", "groupPreset", Lines(SerializePresets(LoadGroupPresets())));
+	out.Comment("Info lines picked beside the cover: preset name, then the lines (@ and an item, or a line of the cover pattern)");
+	out.AddList("infoLines", "infoLine", Lines(SerializeInfoLines(LoadInfoLineChoices())));
 	return out.Text();
 }
 
@@ -113,13 +116,15 @@ bool IsSettingsText(const std::string& text) {
 	return ParseSettingsText(text).has_value();
 }
 
-bool ImportSettingsText(const std::string& text) {
-	const std::optional<SettingsEntries> entries = ParseSettingsText(text);
-	if (!entries) return false;
-	const Reader in(*entries);
+namespace {
+
+// Saves every setting the file has but the view settings, and returns those read over the saved ones. Saving them
+// redraws the panels, so it comes last, once, with everything else in place (the language too).
+ViewSettings SaveAllButViewSettings(const SettingsEntries& entries) {
+	const Reader in(entries);
 
 	ViewSettings view = LoadViewSettings();
-	ReadViewSettings(*entries, view);
+	ReadViewSettings(entries, view);
 
 	bool countsDown = GetDurationCountsDown();
 	in.Bool("durationCountsDown", countsDown);
@@ -181,6 +186,8 @@ bool ImportSettingsText(const std::string& text) {
 		}
 		if (!presets.empty()) PlaylistView::ApplyGroupPresets(presets, {});
 	}
+	// After the presets, which drop the choices of presets that are gone.
+	if (const auto lines = in.List("infoLines", "infoLine")) PlaylistView::ApplyInfoLineChoices(ParseInfoLines(JoinLines(*lines)));
 
 	// A file from before likes had a choice of their own names only ratingStorage, which then set both: the likes
 	// go where that file's choice sent them.
@@ -189,13 +196,19 @@ bool ImportSettingsText(const std::string& text) {
 	const RatingStorage ratings = static_cast<RatingStorage>(rating);
 	int like = static_cast<int>(GetLikeStorage());
 	if (!in.Int("likeStorage", like, 0, 2) && ratingRead) {
-		like = static_cast<int>(ratings == RatingStorage::FileTags ? LikeStorage::FileTags : ratings == RatingStorage::Both ? LikeStorage::Both : LikeStorage::Store);
+		like = static_cast<int>(LikeStorageFor(ratings));
 	}
 	const LikeStorage likes = static_cast<LikeStorage>(like);
 	if (ratings != GetRatingStorage() || likes != GetLikeStorage()) PlaylistView::ApplyRatingStorage(ratings, likes);
+	return view;
+}
 
-	// Last, so the panels redraw with everything above, in the new language.
-	PlaylistView::ApplyViewSettings(view);
+} // namespace
+
+bool ImportSettingsText(const std::string& text) {
+	const std::optional<SettingsEntries> entries = ParseSettingsText(text);
+	if (!entries) return false;
+	PlaylistView::ApplyViewSettings(SaveAllButViewSettings(*entries));
 	return true;
 }
 

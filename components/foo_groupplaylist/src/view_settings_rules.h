@@ -15,8 +15,12 @@ constexpr int kMaxCoverSize = 300;
 // The colour of the group header and label text before 0.9.2, as Windows stores it (0x00BBGGRR).
 constexpr std::uint32_t kOrangeTextColor = 0x00227EE6;
 
+// The default of a choice whose absence means something: foobar2000 saves a setting only when it differs from its
+// default, so it reads back as this until the user's choice is saved once.
+constexpr int kNeverSaved = -1;
+
 // Whether the group header or label text uses its own colour rather than foobar2000's highlight colour.
-// saved is the stored choice: 1 or 0, or -1 when it was never stored. Then the text keeps its own colour only if
+// saved is the stored choice: 1 or 0, or kNeverSaved when it was never stored. Then the text keeps its own colour only if
 // someone picked one before 0.9.2, so an orange that was never changed starts following foobar2000.
 inline bool UsesOwnTextColor(int saved, std::uint32_t savedColor) {
 	return saved < 0 ? savedColor != kOrangeTextColor : saved != 0;
@@ -62,6 +66,18 @@ inline int ClampSetting(int value, int minimum, int maximum) {
 
 inline int ClampCoverSize(int size) {
 	return ClampSetting(size, kMinCoverSize, kMaxCoverSize);
+}
+
+// The cover column holds the cover and this margin on each side.
+constexpr int kCoverInset = 4;
+
+inline int CoverColumnWidth(int coverSize) {
+	return coverSize + 2 * kCoverInset;
+}
+
+// The cover size a dragged cover column width asks for.
+inline int CoverSizeForColumnWidth(int width) {
+	return ClampCoverSize(width - 2 * kCoverInset);
 }
 
 inline int ClampRowPadding(int padding) {

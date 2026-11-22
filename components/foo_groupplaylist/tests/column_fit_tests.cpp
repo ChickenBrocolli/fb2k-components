@@ -65,9 +65,116 @@ void AColumnAlreadyNarrowKeepsItsWidth() {
 	CHECK(smallNeighbor.dragged == 100 && smallNeighbor.neighbor == 10);
 }
 
+// Track, Title (its text is cut), Rating, Length, Like, with the widths their content needs.
+const std::vector<int> kShelf = { 50, 300, 150, 120, 380 };
+const std::vector<int> kShelfFits = { 30, 500, 100, 40, 50 };
+
+// Widening the title squeezes the rating to its stars, then the length to its text, then the like column.
+void WideningAColumnSqueezesTheNextOnesInTurn() {
+	CHECK(PushDivider(kShelf, kShelfFits, 1, 60, 16) == std::vector<int>({ 50, 360, 100, 110, 380 }));
+	CHECK(PushDivider(kShelf, kShelfFits, 1, 200, 16) == std::vector<int>({ 50, 500, 100, 40, 310 }));
+}
+
+void WhenEverythingFitsItsContentTheEdgeStops() {
+	const std::vector<int> widths = PushDivider(kShelf, kShelfFits, 1, 2000, 16);
+	CHECK(widths == std::vector<int>({ 50, 760, 100, 40, 50 }));
+	CHECK(Sum(widths) == Sum(kShelf));
+}
+
+// The widths come from the start of the drag, so going back gives every column its width back.
+void DraggingBackGivesTheWidthsBack() {
+	CHECK(PushDivider(kShelf, kShelfFits, 1, 0, 16) == kShelf);
+	CHECK(PushDivider(kShelf, kShelfFits, 1, 60, 16) == std::vector<int>({ 50, 360, 100, 110, 380 }));
+}
+
+// Moving the edge left squeezes the columns on its left, the nearest first; the cut title keeps its width as it does
+// not touch the edge, and the track column gives its spare room.
+void MovingTheEdgeLeftSqueezesTheColumnsOnTheLeft() {
+	const std::vector<int> widths = PushDivider(kShelf, kShelfFits, 2, -100, 16);
+	CHECK(widths == std::vector<int>({ 30, 300, 100, 190, 380 }));
+	CHECK(Sum(widths) == Sum(kShelf));
+}
+
+// The title touches the edge right of the track column: its text is already cut, so it gives down to the minimum.
+void AColumnAlreadyCutGivesDownToTheMinimumWhenItTouchesTheEdge() {
+	CHECK(PushDivider(kShelf, kShelfFits, 0, 200, 16) == std::vector<int>({ 250, 100, 150, 120, 380 }));
+	CHECK(PushDivider(kShelf, kShelfFits, 0, 400, 16) == std::vector<int>({ 450, 16, 100, 54, 380 }));
+	// Shrinking the title by its own right edge.
+	CHECK(PushDivider(kShelf, kShelfFits, 1, -250, 16) == std::vector<int>({ 50, 50, 400, 120, 380 }));
+}
+
+void ThePanelEdgeDoesNotMove() {
+	CHECK(PushDivider(kShelf, kShelfFits, 4, 50, 16) == kShelf);
+	CHECK(PushDivider({ 100 }, { 50 }, 0, 50, 16) == std::vector<int>({ 100 }));
+}
+
+// Rating and Like hold stars and a heart.
+const std::vector<bool> kShelfFixed = { false, false, true, false, true };
+
+PushFeel DragFeel() {
+	PushFeel feel;
+	feel.minimum = 16;
+	feel.catchPixels = 8;
+	feel.wallPixels = 24;
+	feel.beyondWall = true;
+	return feel;
+}
+
+// When the rating has given all it may, the edge holds for 8 pixels of the pointer, then catches up with it.
+void TheEdgeCatchesWhenAColumnHasGivenAll() {
+	const PushFeel feel = DragFeel();
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 50, feel) == std::vector<int>({ 50, 350, 100, 120, 380 }));
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 57, feel) == std::vector<int>({ 50, 350, 100, 120, 380 }));
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 58, feel) == std::vector<int>({ 50, 358, 100, 112, 380 }));
+}
+
+// At the wall the edge holds for 24 pixels; past it only the text columns give their content, down to the minimum.
+void PastTheWallOnlyTextColumnsAreCut() {
+	const PushFeel feel = DragFeel();
+	const std::vector<int> atWall = { 50, 760, 100, 40, 50 };
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 470, feel) == atWall);
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 483, feel) == atWall);
+	const std::vector<int> past = PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 490, feel);
+	CHECK(past == std::vector<int>({ 50, 784, 100, 16, 50 }));
+	CHECK(Sum(past) == Sum(kShelf));
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 5000, feel) == past);
+}
+
+void WithoutGoingPastTheWallTheEdgeStopsThere() {
+	PushFeel feel = DragFeel();
+	feel.beyondWall = false;
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 5000, feel) == std::vector<int>({ 50, 760, 100, 40, 50 }));
+}
+
+// Going back passes the same catches and gives the widths back.
+void GoingBackPassesTheSameCatches() {
+	const PushFeel feel = DragFeel();
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 55, feel) == std::vector<int>({ 50, 350, 100, 120, 380 }));
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 20, feel) == std::vector<int>({ 50, 320, 130, 120, 380 }));
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 1, 0, feel) == kShelf);
+}
+
+void TheCatchesWorkMovingLeftToo() {
+	const PushFeel feel = DragFeel();
+	// The rating touches the edge and gives 50; then the edge holds; the cut title gives nothing; the track column 20.
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 2, -54, feel) == std::vector<int>({ 50, 300, 100, 170, 380 }));
+	CHECK(PushDivider(kShelf, kShelfFits, kShelfFixed, 2, -60, feel) == std::vector<int>({ 40, 300, 100, 180, 380 }));
+}
+
 } // namespace
 
 void RunColumnFitTests() {
+	TheEdgeCatchesWhenAColumnHasGivenAll();
+	PastTheWallOnlyTextColumnsAreCut();
+	WithoutGoingPastTheWallTheEdgeStopsThere();
+	GoingBackPassesTheSameCatches();
+	TheCatchesWorkMovingLeftToo();
+	WideningAColumnSqueezesTheNextOnesInTurn();
+	WhenEverythingFitsItsContentTheEdgeStops();
+	DraggingBackGivesTheWidthsBack();
+	MovingTheEdgeLeftSqueezesTheColumnsOnTheLeft();
+	AColumnAlreadyCutGivesDownToTheMinimumWhenItTouchesTheEdge();
+	ThePanelEdgeDoesNotMove();
 	TheColumnsFillTheSpaceInTheirProportions();
 	RoundingNeverChangesTheTotal();
 	OneColumnTakesEverything();

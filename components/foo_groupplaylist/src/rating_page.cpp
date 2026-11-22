@@ -20,15 +20,15 @@ namespace {
 struct RatingValues {
 	RatingStorage storage = RatingStorage::Statistics;
 	LikeStorage likes = LikeStorage::Store;
-	ViewSettings view;
+	PageViewSettings<SettingsPage::Ratings> view;
 
 	bool operator==(const RatingValues& other) const {
-		return storage == other.storage && likes == other.likes && SameSettings(view, other.view, SettingsPage::Ratings);
+		return storage == other.storage && likes == other.likes && view == other.view;
 	}
 
-	static RatingValues From(const ViewSettings& view, RatingStorage storage, LikeStorage likes) { return { storage, likes, view }; }
+	static RatingValues From(const ViewSettings& view, RatingStorage storage, LikeStorage likes) { return { storage, likes, { view } }; }
 
-	void CopyTo(ViewSettings& to) const { CopySettings(view, to, SettingsPage::Ratings); }
+	void CopyTo(ViewSettings& to) const { view.CopyTo(to); }
 };
 
 // The rating choices in the order the list shows them, the same order as the like choices. The saved numbers of
@@ -140,19 +140,19 @@ private:
 	void ShowValues() {
 		CComboBox(GetDlgItem(IDC_PREF_RATING)).SetCurSel(RatingChoiceOf(m_values.storage));
 		CComboBox(GetDlgItem(IDC_PREF_LIKE_STORAGE)).SetCurSel(static_cast<int>(m_values.likes));
-		CheckDlgButton(IDC_PREF_STAR_COLOR_CUSTOM, m_values.view.customStarColor ? BST_CHECKED : BST_UNCHECKED);
-		CheckRadioButton(IDC_LIKE_STYLE_ACCENT, IDC_LIKE_STYLE_EMOJI, m_values.view.likeStyle == LikeStyle::Emoji ? IDC_LIKE_STYLE_EMOJI : IDC_LIKE_STYLE_ACCENT);
-		CheckDlgButton(IDC_LIKE_COLOR_CUSTOM, m_values.view.customLikeColor ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_PREF_STAR_COLOR_CUSTOM, m_values.view.fields.customStarColor ? BST_CHECKED : BST_UNCHECKED);
+		CheckRadioButton(IDC_LIKE_STYLE_ACCENT, IDC_LIKE_STYLE_EMOJI, m_values.view.fields.likeStyle == LikeStyle::Emoji ? IDC_LIKE_STYLE_EMOJI : IDC_LIKE_STYLE_ACCENT);
+		CheckDlgButton(IDC_LIKE_COLOR_CUSTOM, m_values.view.fields.customLikeColor ? BST_CHECKED : BST_UNCHECKED);
 		ShowEnabled();
 	}
 
 	// The emoji heart has its own colour, so the heart colour only applies to the hearts in the star colour.
 	void ShowEnabled() {
-		const bool emoji = m_values.view.likeStyle == LikeStyle::Emoji;
-		GetDlgItem(IDC_PREF_STAR_COLOR).EnableWindow(m_values.view.customStarColor);
+		const bool emoji = m_values.view.fields.likeStyle == LikeStyle::Emoji;
+		GetDlgItem(IDC_PREF_STAR_COLOR).EnableWindow(m_values.view.fields.customStarColor);
 		GetDlgItem(IDC_LIKE_COLOR_CUSTOM).EnableWindow(!emoji);
 		GetDlgItem(IDC_LIKE_SWATCH).EnableWindow(!emoji);
-		GetDlgItem(IDC_LIKE_COLOR).EnableWindow(!emoji && m_values.view.customLikeColor);
+		GetDlgItem(IDC_LIKE_COLOR).EnableWindow(!emoji && m_values.view.fields.customLikeColor);
 		GetDlgItem(IDC_PREF_STAR_SWATCH).Invalidate();
 		GetDlgItem(IDC_LIKE_SWATCH).Invalidate();
 	}
@@ -174,16 +174,16 @@ private:
 	void OnCheckChanged(UINT, int id, CWindow) {
 		const bool checked = IsDlgButtonChecked(id) == BST_CHECKED;
 		switch (id) {
-		case IDC_PREF_STAR_COLOR_CUSTOM: m_values.view.customStarColor = checked; break;
-		case IDC_LIKE_COLOR_CUSTOM: m_values.view.customLikeColor = checked; break;
-		case IDC_LIKE_STYLE_ACCENT: if (checked) m_values.view.likeStyle = LikeStyle::StarColour; break;
-		case IDC_LIKE_STYLE_EMOJI: if (checked) m_values.view.likeStyle = LikeStyle::Emoji; break;
+		case IDC_PREF_STAR_COLOR_CUSTOM: m_values.view.fields.customStarColor = checked; break;
+		case IDC_LIKE_COLOR_CUSTOM: m_values.view.fields.customLikeColor = checked; break;
+		case IDC_LIKE_STYLE_ACCENT: if (checked) m_values.view.fields.likeStyle = LikeStyle::StarColour; break;
+		case IDC_LIKE_STYLE_EMOJI: if (checked) m_values.view.fields.likeStyle = LikeStyle::Emoji; break;
 		}
 		Changed();
 	}
 
 	void OnChooseColor(UINT, int id, CWindow) {
-		COLORREF& color = id == IDC_PREF_STAR_COLOR ? m_values.view.starColor : m_values.view.likeColor;
+		COLORREF& color = id == IDC_PREF_STAR_COLOR ? m_values.view.fields.starColor : m_values.view.fields.likeColor;
 		static COLORREF customColors[16] = {};
 		CHOOSECOLORW dialog = { sizeof(dialog) };
 		dialog.hwndOwner = m_hWnd;
@@ -202,8 +202,8 @@ private:
 			SetMsgHandled(FALSE);
 			return;
 		}
-		const COLORREF star = m_values.view.customStarColor ? m_values.view.starColor : FoobarHighlightColor();
-		const COLORREF color = id == IDC_PREF_STAR_SWATCH ? star : m_values.view.customLikeColor ? m_values.view.likeColor : star;
+		const COLORREF star = m_values.view.fields.customStarColor ? m_values.view.fields.starColor : FoobarHighlightColor();
+		const COLORREF color = id == IDC_PREF_STAR_SWATCH ? star : m_values.view.fields.customLikeColor ? m_values.view.fields.likeColor : star;
 		CDCHandle dc(item->hDC);
 		dc.FillSolidRect(&item->rcItem, color);
 		dc.FrameRect(&item->rcItem, static_cast<HBRUSH>(GetStockObject(GRAY_BRUSH)));

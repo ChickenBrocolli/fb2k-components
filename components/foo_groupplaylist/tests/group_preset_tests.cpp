@@ -15,6 +15,7 @@ void CheckSamePreset(const GroupPreset& actual, const GroupPreset& expected) {
 	CHECK(actual.showCoverText == expected.showCoverText);
 	CHECK(actual.subgroupPatterns == expected.subgroupPatterns);
 	CHECK(actual.hideUniformLabels == expected.hideUniformLabels);
+	CHECK(actual.showInMenu == expected.showInMenu);
 }
 
 void APresetListSurvivesSerializeAndParse() {
@@ -141,6 +142,27 @@ void TheDefaultPresetNameNamesADefaultPreset() {
 	CHECK(FindPresetByName(DefaultGroupPresets(), kDefaultGroupPresetName).has_value());
 }
 
+// The flag numbers are saved, so a change of their values must fail here.
+void TheSavedFlagNumbersNeverChange() {
+	GroupPreset preset = { "A", "s", "h", "c", true, {}, true };
+	preset.showInMenu = false;
+	CHECK(SerializePresets({ preset }) == "A\ts\th\tc\t7\n");
+	preset.showCoverText = false;
+	preset.showInMenu = true;
+	CHECK(SerializePresets({ preset }) == "A\ts\th\tc\t2\n");
+}
+
+// The "None" mark stands in for a preset name in a playlist property, so no preset may take it.
+void NoPresetCanTakeTheNoneMark() {
+	const PresetNameCheck check = CheckPresetNames(Named({ "Album", kUngroupedPresetMark }));
+	CHECK(check.problem == PresetNameProblem::Empty);
+	CHECK(check.index == 1);
+	const std::string text = std::string(kUngroupedPresetMark) + "\ts\th\tc\t0\nGood\ts\th\tc\t0\n";
+	const std::vector<GroupPreset> parsed = ParsePresets(text);
+	CHECK(parsed.size() == 1);
+	if (parsed.size() == 1) CHECK(parsed[0].name == "Good");
+}
+
 } // namespace
 
 void RunGroupPresetTests() {
@@ -157,4 +179,6 @@ void RunGroupPresetTests() {
 	TheHideUniformLabelsFlagSurvivesARoundTrip();
 	AnOldPresetLineReadsWithTheFlagOff();
 	TheShowInMenuFlagOfAPresetSurvivesARoundTrip();
+	TheSavedFlagNumbersNeverChange();
+	NoPresetCanTakeTheNoneMark();
 }

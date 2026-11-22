@@ -32,11 +32,11 @@ void SaveCustomColumnDefs(const std::vector<ColumnDef>& defs) {
 	cfg_customColumns = SerializeColumnDefs(defs).c_str();
 }
 
-std::vector<ColumnDef> LoadBuiltInColumnEdits() {
+std::vector<BuiltInColumnEdit> LoadBuiltInColumnEdits() {
 	return ParseBuiltInEdits(cfg_builtInColumnEdits.get().c_str());
 }
 
-void SaveBuiltInColumnEdits(const std::vector<ColumnDef>& edits) {
+void SaveBuiltInColumnEdits(const std::vector<BuiltInColumnEdit>& edits) {
 	cfg_builtInColumnEdits = SerializeBuiltInEdits(edits).c_str();
 }
 

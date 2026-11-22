@@ -5,21 +5,26 @@
 #include <optional>
 #include <vector>
 
+// A Windows file time: 100-nanosecond steps since 1601. 0 when there is none.
+using FileTime = uint64_t;
+
 // What GroupPlaylist keeps about one track in its own store (track_store.h): whether it is liked. Ratings and play
-// history are the Playback Statistics component's. Times are Windows file times (100-nanosecond steps since 1601),
-// 0 when there is none.
+// history are the Playback Statistics component's.
 struct TrackRecord {
 	// What 0.10.0 kept here in place of Playback Statistics. No longer filled or shown; the fields stay so that
 	// saved records read and write as before.
-	uint32_t rating = 0;
-	uint32_t playCount = 0;
-	uint64_t firstPlayed = 0;
-	uint64_t lastPlayed = 0;
-	uint64_t added = 0;
-	bool ratingSet = false;
+	struct Legacy0100 {
+		uint32_t rating = 0;
+		uint32_t playCount = 0;
+		FileTime firstPlayed = 0;
+		FileTime lastPlayed = 0;
+		FileTime added = 0;
+		bool ratingSet = false;
+		bool operator==(const Legacy0100&) const = default;
+	} legacy;
 
 	uint32_t liked = 0;  // 1 when the track is liked (version 2)
-	uint64_t likedAt = 0;  // when it was liked, 0 when not liked or liked before version 3
+	FileTime likedAt = 0;  // 0 when not liked or liked before version 3
 	// Set when the like was given or taken away in GroupPlaylist (version 4). Then the store's value stands even
 	// when it is "not liked", and the file's LOVED tag no longer shows in its place.
 	bool likeSet = false;
@@ -64,14 +69,14 @@ inline std::vector<uint8_t> SerializeTrackRecord(const TrackRecord& record) {
 	using track_record_detail::Put;
 	std::vector<uint8_t> out;
 	Put(out, kTrackRecordVersion, 4);
-	Put(out, record.rating, 4);
-	Put(out, record.playCount, 4);
-	Put(out, record.firstPlayed, 8);
-	Put(out, record.lastPlayed, 8);
-	Put(out, record.added, 8);
+	Put(out, record.legacy.rating, 4);
+	Put(out, record.legacy.playCount, 4);
+	Put(out, record.legacy.firstPlayed, 8);
+	Put(out, record.legacy.lastPlayed, 8);
+	Put(out, record.legacy.added, 8);
 	Put(out, record.liked, 4);
 	Put(out, record.likedAt, 8);
-	Put(out, (record.ratingSet ? 1u : 0u) | (record.likeSet ? 2u : 0u), 4);
+	Put(out, (record.legacy.ratingSet ? 1u : 0u) | (record.likeSet ? 2u : 0u), 4);
 	return out;
 }
 
@@ -84,11 +89,11 @@ inline std::optional<TrackRecord> ParseTrackRecord(const uint8_t* data, size_t s
 	const uint64_t version = reader.Take(4);
 	if (version < 1) return std::nullopt;
 	if (!reader.Has(4 + 4 + 8 + 8 + 8)) return std::nullopt;
-	record.rating = static_cast<uint32_t>((std::min)(reader.Take(4), uint64_t{ 5 }));
-	record.playCount = static_cast<uint32_t>(reader.Take(4));
-	record.firstPlayed = reader.Take(8);
-	record.lastPlayed = reader.Take(8);
-	record.added = reader.Take(8);
+	record.legacy.rating = static_cast<uint32_t>((std::min)(reader.Take(4), uint64_t{ 5 }));
+	record.legacy.playCount = static_cast<uint32_t>(reader.Take(4));
+	record.legacy.firstPlayed = reader.Take(8);
+	record.legacy.lastPlayed = reader.Take(8);
+	record.legacy.added = reader.Take(8);
 	if (version >= 2) {
 		if (!reader.Has(4)) return std::nullopt;
 		record.liked = reader.Take(4) != 0 ? 1 : 0;
@@ -100,7 +105,7 @@ inline std::optional<TrackRecord> ParseTrackRecord(const uint8_t* data, size_t s
 	if (version >= 4) {
 		if (!reader.Has(4)) return std::nullopt;
 		const uint64_t flags = reader.Take(4);
-		record.ratingSet = (flags & 1) != 0;
+		record.legacy.ratingSet = (flags & 1) != 0;
 		record.likeSet = (flags & 2) != 0;
 	}
 	return record;
@@ -108,7 +113,7 @@ inline std::optional<TrackRecord> ParseTrackRecord(const uint8_t* data, size_t s
 
 // Likes or unlikes the track at the given time, and reports whether that changed the record. Liking an already liked
 // track keeps the time it was first liked, so "Liked tracks" keeps its order.
-inline bool SetLiked(TrackRecord& record, bool liked, uint64_t now) {
+inline bool SetLiked(TrackRecord& record, bool liked, FileTime now) {
 	if (record.likeSet && (record.liked != 0) == liked) return false;
 	if ((record.liked != 0) != liked) record.likedAt = liked ? now : 0;
 	record.liked = liked ? 1 : 0;

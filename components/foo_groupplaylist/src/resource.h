@@ -65,6 +65,7 @@
 #define IDC_PREF_EXPORT             1224
 #define IDC_PREF_IMPORT             1225
 #define IDC_PREF_DRAG_COLUMNS       1226
+#define IDC_PREF_ANIMATE_COLUMNS    1250
 #define IDC_PREF_TRACK_SUMMARY      1227
 #define IDC_PREF_SUMMARY_PLACE      1228
 #define IDC_PREF_SHOW_HEADERS       1222
@@ -77,6 +78,7 @@
 #define IDD_SCROLL_PAGE      104
 #define IDD_SORT_BY          105
 #define IDD_RATING_PAGE      106
+#define IDD_INFO_LINES       107
 #define IDC_LIKE_STYLE_ACCENT       1601
 #define IDC_LIKE_STYLE_EMOJI        1602
 #define IDC_LIKE_COLOR_CUSTOM       1603
@@ -104,6 +106,11 @@
 #define IDC_SCROLL_NEW_NAME         1327
 #define IDC_SCROLL_SAVE_NEW         1328
 #define IDC_SCROLL_OVERWRITE        1329
+#define IDC_INFO_LIST               1340
+#define IDC_INFO_DEFAULT            1341
+#define IDC_INFO_EDIT               1342
+#define IDC_PRESET_INFO_NOTE        1343
+#define IDC_PRESET_INFO_RESET       1344
 
 #ifndef IDC_STATIC
 #define IDC_STATIC           (-1)

@@ -18,3 +18,19 @@ std::vector<GroupPreset> LoadGroupPresets() {
 void SaveGroupPresets(const std::vector<GroupPreset>& presets) {
 	cfg_groupPresets = SerializePresets(presets).c_str();
 }
+
+namespace {
+
+constexpr GUID guid_info_lines = { 0x9e569fa9, 0xd36d, 0x4157, { 0xa3, 0xb2, 0xcf, 0x80, 0x6d, 0xe9, 0x62, 0x5a } };
+
+cfg_string cfg_infoLines(guid_info_lines, "");
+
+} // namespace
+
+InfoLineChoices LoadInfoLineChoices() {
+	return ParseInfoLines(cfg_infoLines.get().c_str());
+}
+
+void SaveInfoLineChoices(const InfoLineChoices& choices) {
+	cfg_infoLines = SerializeInfoLines(choices).c_str();
+}

@@ -9,8 +9,7 @@
 //
 // Without Playback Statistics there is nowhere but the file for a rating, so ratings then use the RATING tag whatever
 // the choice.
-// The numbers are saved. 1 and 2 have meant the same choices since the first release; in 0.10.0 ratings went to
-// GroupPlaylist's store, which no longer keeps them.
+// The numbers are saved, so each keeps its meaning.
 enum class RatingStorage { FileTags = 0, Statistics = 1, Both = 2 };
 
 // Where likes are read and written: a choice of their own, because Playback Statistics has no likes.
@@ -24,9 +23,12 @@ enum class RatingStorage { FileTags = 0, Statistics = 1, Both = 2 };
 enum class LikeStorage { Store = 0, FileTags = 1, Both = 2 };
 
 RatingStorage GetRatingStorage();
-void SetRatingStorage(RatingStorage storage);
 LikeStorage GetLikeStorage();
-void SetLikeStorage(LikeStorage storage);
+// What the one choice for ratings and likes meant for likes, before likes had a choice of their own.
+LikeStorage LikeStorageFor(RatingStorage ratings);
+// Saves both choices together: while likes were never picked they follow the rating choice, so a rating choice
+// saved alone would move them too.
+void SetStorageChoices(RatingStorage ratings, LikeStorage likes);
 
 // Called when a panel loads. The first time, a profile that used an earlier GroupPlaylist without choosing where
 // ratings are kept goes on keeping them in file tags, as it did; a new one starts with the store.
@@ -48,5 +50,4 @@ void WriteRating(metadb_handle_ptr track, int rating, RatingStorage storage);
 // for a track GroupPlaylist never liked or unliked.
 const char* LikeReadPattern(LikeStorage storage);
 
-// Likes or unlikes the tracks.
 void WriteLikes(metadb_handle_list_cref tracks, bool liked, LikeStorage storage);

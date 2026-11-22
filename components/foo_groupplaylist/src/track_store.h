@@ -6,7 +6,7 @@
 
 // GroupPlaylist's own store of likes, kept by foobar2000 in its profile (metadb_index), so files are left alone.
 // Ratings and play history are not kept here: they are the Playback Statistics component's (rating_store.h), which
-// has no likes. 0.10.0 kept ratings and play counts here too; those values stay in the saved records, unused.
+// has no likes.
 // Built after the rating database sample in the foobar2000 SDK (foo_sample/rating.cpp).
 //
 // A track is known by its artist, album and title, so its record stays when the file moves or is renamed. Tracks
@@ -23,6 +23,6 @@ TrackRecord Get(const metadb_handle_ptr& track);
 void Update(metadb_handle_list_cref tracks, const std::function<bool(TrackRecord&)>& change);
 
 // The current time as stored in a record.
-uint64_t Now();
+FileTime Now();
 
 } // namespace track_store

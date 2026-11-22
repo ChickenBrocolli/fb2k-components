@@ -6,13 +6,23 @@
 #include <vector>
 
 // Where the cover and info columns sit among the track columns. The user drags them anywhere, as the album art
-// column of the Default UI playlist. The list columns are numbered as the view adds them: 0 the cover,
-// 1 the info text, 2 and up the track columns in their saved order. A place is a position in the whole header,
-// counted from the left. Standard library only, so the unit tests build without the foobar2000 SDK.
+// column of the Default UI playlist. A place is a position in the whole header, counted from the left.
+// Standard library only, so the unit tests build without the foobar2000 SDK.
+
+// The list columns as the view adds them: the cover, the info text, then the track columns in their saved order.
+constexpr size_t kCoverColumn = 0;
+constexpr size_t kInfoColumn = 1;
+constexpr size_t kFirstTrackColumn = 2;
+
+// The same numbers as a header's column order array holds them.
+constexpr int kCoverOrderColumn = static_cast<int>(kCoverColumn);
+constexpr int kInfoOrderColumn = static_cast<int>(kInfoColumn);
+constexpr int kFirstTrackOrderColumn = static_cast<int>(kFirstTrackColumn);
+constexpr bool IsTrackColumn(int column) { return column >= kFirstTrackOrderColumn; }
 
 struct BlockColumnPlaces {
-	size_t cover = 0;
-	size_t info = 1;
+	size_t cover = kCoverColumn;
+	size_t info = kInfoColumn;
 
 	bool operator==(const BlockColumnPlaces&) const = default;
 };
@@ -34,9 +44,9 @@ inline BlockColumnPlaces NormalizePlaces(size_t trackCount, BlockColumnPlaces pl
 inline std::vector<int> ScreenOrder(size_t trackCount, BlockColumnPlaces places) {
 	places = NormalizePlaces(trackCount, places);
 	std::vector<int> order;
-	for (size_t index = 0; index < trackCount; ++index) order.push_back(static_cast<int>(2 + index));
+	for (size_t index = 0; index < trackCount; ++index) order.push_back(static_cast<int>(kFirstTrackColumn + index));
 	// The one further left goes in first, so the other's place counts it.
-	std::pair<size_t, int> first(places.cover, 0), second(places.info, 1);
+	std::pair<size_t, int> first(places.cover, kCoverOrderColumn), second(places.info, kInfoOrderColumn);
 	if (second.first < first.first) std::swap(first, second);
 	order.insert(order.begin() + static_cast<std::ptrdiff_t>(first.first), first.second);
 	order.insert(order.begin() + static_cast<std::ptrdiff_t>(second.first), second.second);
@@ -46,8 +56,8 @@ inline std::vector<int> ScreenOrder(size_t trackCount, BlockColumnPlaces places)
 inline BlockColumnPlaces PlacesFromOrder(const std::vector<int>& order) {
 	BlockColumnPlaces places;
 	for (size_t position = 0; position < order.size(); ++position) {
-		if (order[position] == 0) places.cover = position;
-		else if (order[position] == 1) places.info = position;
+		if (order[position] == kCoverOrderColumn) places.cover = position;
+		else if (order[position] == kInfoOrderColumn) places.info = position;
 	}
 	return places;
 }
@@ -57,16 +67,16 @@ inline BlockColumnPlaces PlacesFromOrder(const std::vector<int>& order) {
 inline BlockColumnPlaces PlacesAfterTrackChange(BlockColumnPlaces places, const std::vector<bool>& kept, size_t added) {
 	std::vector<int> order;
 	for (const int column : ScreenOrder(kept.size(), places)) {
-		if (column < 2 || kept[static_cast<size_t>(column - 2)]) order.push_back(column);
+		if (!IsTrackColumn(column) || kept[static_cast<size_t>(column - kFirstTrackOrderColumn)]) order.push_back(column);
 	}
 	size_t afterLastTrack = order.size();
 	for (size_t position = order.size(); position > 0; --position) {
-		if (order[position - 1] >= 2) {
+		if (IsTrackColumn(order[position - 1])) {
 			afterLastTrack = position;
 			break;
 		}
 	}
-	order.insert(order.begin() + static_cast<std::ptrdiff_t>(afterLastTrack), added, 2);
+	order.insert(order.begin() + static_cast<std::ptrdiff_t>(afterLastTrack), added, kFirstTrackOrderColumn);
 	return PlacesFromOrder(order);
 }
 
@@ -77,13 +87,13 @@ inline std::optional<std::pair<size_t, size_t>> WidestTrackRun(const std::vector
 	int widestWidth = -1;
 	size_t position = 0;
 	while (position < order.size()) {
-		if (order[position] < 2) {
+		if (!IsTrackColumn(order[position])) {
 			++position;
 			continue;
 		}
 		const size_t first = position;
 		int width = 0;
-		while (position < order.size() && order[position] >= 2) width += widths[position++];
+		while (position < order.size() && IsTrackColumn(order[position])) width += widths[position++];
 		if (width > widestWidth) {
 			widestWidth = width;
 			widest = std::make_pair(first, position - 1);

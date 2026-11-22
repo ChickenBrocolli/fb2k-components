@@ -11,7 +11,6 @@
 #include "column_places.h"
 #include "tab_lines.h"
 
-// Column definitions and the rules for storing and naming them.
 // Standard library only, so the unit tests build without the foobar2000 SDK.
 
 enum class ColumnAlignment { Left = 0, Center = 1, Right = 2 };
@@ -24,7 +23,8 @@ inline ColumnAlignment ColumnAlignmentFrom(int number) {
 // Text shows what the pattern produces. Rating shows the track's rating as stars and changes it on a click
 // (rating_cell.h). Like shows a heart and likes or unlikes the track on a click. Their patterns are unused, because
 // a setting decides where ratings and likes are kept (rating_store.h).
-// Duration shows the length, and on the playing track the time played or left (see PlaylistView).
+// Duration shows the length, and on the playing track the time played or left (see PlaylistView). Its pattern only
+// sorts and is shown on the Columns page.
 enum class ColumnKind { Text, Rating, Duration, Like };
 
 // The columns whose cells are clicked to change the track: their look and alignment come from code.
@@ -32,14 +32,27 @@ inline bool IsClickColumn(ColumnKind kind) {
 	return kind == ColumnKind::Rating || kind == ColumnKind::Like;
 }
 
+// The columns whose pattern the user can change. The others draw from code.
+inline bool TakesPattern(ColumnKind kind) {
+	return kind == ColumnKind::Text;
+}
+
+// A width in pixels at 96 DPI (100% display scaling), as widths are saved, so a saved layout looks the same at
+// another display scale. PlaylistView::ScreenWidth turns it into pixels on screen.
+struct WidthAt96Dpi {
+	float value = 0;
+	bool operator==(const WidthAt96Dpi&) const = default;
+};
+
 // One track column the user can show from the Columns menu.
 struct ColumnDef {
 	std::string name;
 	std::string pattern;
 	ColumnAlignment alignment;
-	float width;
+	WidthAt96Dpi width;  // when it is turned on
 	ColumnKind kind = ColumnKind::Text;
-	// Custom columns only. A column left out of the Columns menu still shows in panels that have it.
+	// A column left out of the Columns menu still shows in panels that have it. Saved with a custom column, and as a
+	// list of names for the built-in ones (LoadHiddenBuiltInColumns).
 	bool showInMenu = true;
 	// Built-in columns only: the name the user gave it. Empty shows the built-in name in the current language.
 	// The column is still found by name, so panels keep its place and width.
@@ -47,14 +60,13 @@ struct ColumnDef {
 };
 
 // Which columns a panel shows, in display order, with their widths.
-// All widths are pixels at 96 DPI, so a saved layout looks the same at another display scale.
 struct ColumnLayout {
 	struct Column {
 		std::string name;
-		float width;
+		WidthAt96Dpi width;
 	};
-	float coverWidth = 106;
-	float infoWidth = 130;
+	WidthAt96Dpi coverWidth = { 106 };
+	WidthAt96Dpi infoWidth = { 130 };
 	std::vector<Column> columns;
 	// Where the cover and info columns sit on screen. They start at the left, as before they could be moved.
 	BlockColumnPlaces places;
@@ -62,7 +74,6 @@ struct ColumnLayout {
 
 // The built-in columns in the order they come in, one inner list per kind (the user can reorder them, column_store.h):
 // playlist, tags, audio, ReplayGain, playback statistics, file.
-// Which columns are here comes from a survey of other players, not from the original's list. The patterns are standard title formatting.
 inline std::vector<std::vector<ColumnDef>> BuiltInColumnGroups() {
 	return {
 		{
@@ -155,25 +166,31 @@ inline std::vector<ColumnDef> BuiltInColumnDefsForMenu(const std::vector<std::st
 	return defs;
 }
 
-// What the user changed in built-in columns: the shown name, the pattern and the alignment.
+// What the user changed in one built-in column, found by its name: the shown name (empty keeps the built-in one),
+// the pattern and the alignment.
+struct BuiltInColumnEdit {
+	std::string name;
+	std::string title;
+	std::string pattern;
+	ColumnAlignment alignment;
+};
+
 // Only columns that differ from their built-in definition are kept, one per line (tab_lines.h):
 // name, title, pattern, alignment number.
-inline std::string SerializeBuiltInEdits(const std::vector<ColumnDef>& edits) {
+inline std::string SerializeBuiltInEdits(const std::vector<BuiltInColumnEdit>& edits) {
 	std::string out;
-	for (const ColumnDef& def : edits) {
-		out += JoinFieldLine({ def.name, def.title, def.pattern, std::to_string(static_cast<int>(def.alignment)) });
+	for (const BuiltInColumnEdit& edit : edits) {
+		out += JoinFieldLine({ edit.name, edit.title, edit.pattern, std::to_string(static_cast<int>(edit.alignment)) });
 	}
 	return out;
 }
 
 // A line with fewer than four fields or an empty name is skipped.
-inline std::vector<ColumnDef> ParseBuiltInEdits(const std::string& text) {
-	std::vector<ColumnDef> edits;
+inline std::vector<BuiltInColumnEdit> ParseBuiltInEdits(const std::string& text) {
+	std::vector<BuiltInColumnEdit> edits;
 	for (const std::vector<std::string>& fields : SplitFieldLines(text)) {
 		if (fields.size() < 4 || fields[0].empty()) continue;
-		ColumnDef def = { fields[0], fields[2], ColumnAlignmentFrom(std::atoi(fields[3].c_str())), 0 };
-		def.title = fields[1];
-		edits.push_back(def);
+		edits.push_back({ fields[0], fields[1], fields[2], ColumnAlignmentFrom(std::atoi(fields[3].c_str())) });
 	}
 	return edits;
 }
@@ -181,12 +198,12 @@ inline std::vector<ColumnDef> ParseBuiltInEdits(const std::string& text) {
 // The built-in columns with the user's changes. A change for a name no built-in column has is left out.
 // Only text columns take a pattern: the Duration column draws the time played or left, and the Rating and Like
 // columns' stars and heart come from code. Those two also keep their alignment, which the drawing sets.
-inline std::vector<ColumnDef> ApplyBuiltInEdits(std::vector<ColumnDef> defs, const std::vector<ColumnDef>& edits) {
+inline std::vector<ColumnDef> ApplyBuiltInEdits(std::vector<ColumnDef> defs, const std::vector<BuiltInColumnEdit>& edits) {
 	for (ColumnDef& def : defs) {
-		for (const ColumnDef& edit : edits) {
+		for (const BuiltInColumnEdit& edit : edits) {
 			if (edit.name != def.name) continue;
 			def.title = edit.title;
-			if (def.kind == ColumnKind::Text) def.pattern = edit.pattern;
+			if (TakesPattern(def.kind)) def.pattern = edit.pattern;
 			if (!IsClickColumn(def.kind)) def.alignment = edit.alignment;
 		}
 	}
@@ -198,14 +215,12 @@ inline bool IsEditedBuiltIn(const ColumnDef& def, const ColumnDef& original) {
 }
 
 // The changes to keep: the built-in columns in defs that differ from the original of the same name.
-inline std::vector<ColumnDef> BuiltInEditsFrom(const std::vector<ColumnDef>& originals, const std::vector<ColumnDef>& defs) {
-	std::vector<ColumnDef> edits;
+inline std::vector<BuiltInColumnEdit> BuiltInEditsFrom(const std::vector<ColumnDef>& originals, const std::vector<ColumnDef>& defs) {
+	std::vector<BuiltInColumnEdit> edits;
 	for (const ColumnDef& def : defs) {
 		for (const ColumnDef& original : originals) {
 			if (original.name != def.name || !IsEditedBuiltIn(def, original)) continue;
-			ColumnDef edit = { def.name, def.pattern, def.alignment, 0 };
-			edit.title = def.title;
-			edits.push_back(edit);
+			edits.push_back({ def.name, def.title, def.pattern, def.alignment });
 		}
 	}
 	return edits;
@@ -229,7 +244,7 @@ inline ColumnLayout DefaultColumnLayout() {
 inline std::string SerializeColumnDefs(const std::vector<ColumnDef>& defs) {
 	std::string out;
 	for (const ColumnDef& def : defs) {
-		out += JoinFieldLine({ def.name, def.pattern, std::to_string(static_cast<int>(def.alignment)), std::to_string(def.width), def.showInMenu ? "1" : "0" });
+		out += JoinFieldLine({ def.name, def.pattern, std::to_string(static_cast<int>(def.alignment)), std::to_string(def.width.value), def.showInMenu ? "1" : "0" });
 	}
 	return out;
 }
@@ -251,9 +266,9 @@ inline std::vector<ColumnDef> ParseColumnDefs(const std::string& text) {
 // Text form of a column layout (tab_lines.h), kept with a playlist that remembers its own columns. The first line is
 // "layout", the cover and info widths and their places; each further line a track column's name and width.
 inline std::string SerializeColumnLayout(const ColumnLayout& layout) {
-	std::string out = JoinFieldLine({ "layout", std::to_string(layout.coverWidth), std::to_string(layout.infoWidth),
+	std::string out = JoinFieldLine({ "layout", std::to_string(layout.coverWidth.value), std::to_string(layout.infoWidth.value),
 		std::to_string(layout.places.cover), std::to_string(layout.places.info) });
-	for (const ColumnLayout::Column& column : layout.columns) out += JoinFieldLine({ column.name, std::to_string(column.width) });
+	for (const ColumnLayout::Column& column : layout.columns) out += JoinFieldLine({ column.name, std::to_string(column.width.value) });
 	return out;
 }
 
@@ -264,8 +279,8 @@ inline std::optional<ColumnLayout> ParseColumnLayout(const std::string& text) {
 	ColumnLayout layout;
 	const float cover = static_cast<float>(std::atof(lines[0][1].c_str()));
 	const float info = static_cast<float>(std::atof(lines[0][2].c_str()));
-	if (cover > 0) layout.coverWidth = cover;
-	if (info > 0) layout.infoWidth = info;
+	if (cover > 0) layout.coverWidth = { cover };
+	if (info > 0) layout.infoWidth = { info };
 	layout.places = { static_cast<size_t>(std::strtoul(lines[0][3].c_str(), nullptr, 10)), static_cast<size_t>(std::strtoul(lines[0][4].c_str(), nullptr, 10)) };
 	for (size_t index = 1; index < lines.size(); ++index) {
 		const std::vector<std::string>& fields = lines[index];
@@ -280,7 +295,7 @@ inline std::optional<ColumnLayout> ParseColumnLayout(const std::string& text) {
 // The same columns in the same order and places, with widths within half a pixel: the header reads widths back
 // as fractions of a pixel, so a layout that was not touched compares equal to itself.
 inline bool SameColumnLayout(const ColumnLayout& a, const ColumnLayout& b) {
-	const auto within = [](float x, float y) { return std::fabs(x - y) < 0.5f; };
+	const auto within = [](WidthAt96Dpi x, WidthAt96Dpi y) { return std::fabs(x.value - y.value) < 0.5f; };
 	if (a.columns.size() != b.columns.size() || !(a.places == b.places) || !within(a.coverWidth, b.coverWidth) || !within(a.infoWidth, b.infoWidth)) return false;
 	for (size_t index = 0; index < a.columns.size(); ++index) {
 		if (a.columns[index].name != b.columns[index].name || !within(a.columns[index].width, b.columns[index].width)) return false;

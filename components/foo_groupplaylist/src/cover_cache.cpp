@@ -1,16 +1,20 @@
 #include "stdafx.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include <SDK/album_art.h>
 #include <SDK/threadsLite.h>
 #include <libPPUI/WindowsImaging.h>
 
 #include "cover_cache.h"
+#include "effects.h"
 
 namespace {
 
 constexpr size_t kMaxEntries = 256;
+// The path of the stub image's entries. No file path starts with a control character.
+const std::string kStubPath = "stub";
 
 // Copies a premultiplied BGRA image into a top-down 32-bit DIB section, so AlphaBlend can draw it with its transparency.
 HBITMAP ToBitmap(IWICBitmapSource* source) {
@@ -54,14 +58,15 @@ private:
 	const bool m_initialized;
 };
 
-// Runs on a worker thread. Returns NULL when the file has no front cover or it cannot be read.
+// Runs on a worker thread. Returns NULL when the file has no front cover or it cannot be read. With no track, loads
+// foobar2000's stub image, the picture its preferences set for tracks without album art.
 HBITMAP LoadCover(const metadb_handle_ptr& track, int sizePixels) {
 	try {
 		ComScope com;
-		auto extractor = album_art_manager_v2::get()->open(
-			pfc::list_single_ref_t<metadb_handle_ptr>(track),
-			pfc::list_single_ref_t<GUID>(album_art_ids::cover_front),
-			fb2k::noAbort);
+		const auto manager = album_art_manager_v2::get();
+		const auto extractor = track.is_valid()
+			? manager->open(pfc::list_single_ref_t<metadb_handle_ptr>(track), pfc::list_single_ref_t<GUID>(album_art_ids::cover_front), fb2k::noAbort)
+			: manager->open_stub(fb2k::noAbort);
 		return ScaleToBitmap(extractor->query(album_art_ids::cover_front, fb2k::noAbort), sizePixels);
 	} catch (std::exception const&) {
 		return NULL;
@@ -76,17 +81,49 @@ CoverCache::~CoverCache() {
 	*m_alive = false;
 }
 
-HBITMAP CoverCache::Get(const metadb_handle_ptr& track, int sizePixels) {
+CoverCache::Found CoverCache::Get(const metadb_handle_ptr& track, int sizePixels, bool stubWhenNone) {
+	const std::string path = track->get_path();
+	const Found found = Lookup(path, track, sizePixels);
+	if (found.bitmap || !stubWhenNone || !KnownWithoutCover(path)) return found;
+	return Lookup(kStubPath, metadb_handle_ptr(), sizePixels);
+}
+
+// Whether a load of the file at some size finished without a cover. One at the new size may still be loading, as
+// while the cover size changes; the stub stays meanwhile.
+bool CoverCache::KnownWithoutCover(const std::string& path) const {
+	const std::string prefix = path + '|';
+	for (auto entry = m_entries.lower_bound(prefix); entry != m_entries.end() && entry->first.compare(0, prefix.size(), prefix) == 0; ++entry) {
+		if (!entry->second.loading && !entry->second.bitmap) return true;
+	}
+	return false;
+}
+
+CoverCache::Found CoverCache::Lookup(const std::string& path, const metadb_handle_ptr& track, int sizePixels) {
 	// The size is part of the key, so a new cover size loads new images and the old ones age out.
-	const std::string key = std::string(track->get_path()) + '|' + std::to_string(sizePixels);
+	const std::string key = path + '|' + std::to_string(sizePixels);
 	auto found = m_entries.find(key);
 	if (found == m_entries.end()) {
 		if (m_entries.size() >= kMaxEntries) DropLeastRecentlyUsed();
 		found = m_entries.emplace(key, Entry()).first;
+		found->second.sizePixels = sizePixels;
 		StartLoad(key, track, sizePixels);
 	}
 	found->second.lastUse = ++m_useCounter;
-	return found->second.bitmap;
+	if (found->second.loading) return NearestLoadedSize(path, sizePixels);
+	return { found->second.bitmap, sizePixels, found->second.arrivedMs };
+}
+
+// A finished entry without a bitmap means the file has no cover, and stands in for nothing.
+CoverCache::Found CoverCache::NearestLoadedSize(const std::string& path, int sizePixels) {
+	const std::string prefix = path + '|';
+	Entry* nearest = nullptr;
+	for (auto entry = m_entries.lower_bound(prefix); entry != m_entries.end() && entry->first.compare(0, prefix.size(), prefix) == 0; ++entry) {
+		if (entry->second.loading || !entry->second.bitmap) continue;
+		if (!nearest || std::abs(entry->second.sizePixels - sizePixels) < std::abs(nearest->sizePixels - sizePixels)) nearest = &entry->second;
+	}
+	if (!nearest) return {};
+	nearest->lastUse = ++m_useCounter;
+	return { nearest->bitmap, nearest->sizePixels };
 }
 
 void CoverCache::StartLoad(const std::string& key, const metadb_handle_ptr& track, int sizePixels) {
@@ -122,6 +159,9 @@ void CoverCache::FinishLoad(const std::string& key, HBITMAP bitmap) {
 		if (bitmap) DeleteObject(bitmap);
 		return;
 	}
+	// A cover that nothing stood in for arrives on an empty place, and fades in there.
+	const std::string path = key.substr(0, key.rfind('|'));
+	if (!NearestLoadedSize(path, found->second.sizePixels).bitmap) found->second.arrivedMs = SteadyNowMs();
 	found->second.loading = false;
 	if (!bitmap) return;
 	found->second.bitmap.Attach(bitmap);

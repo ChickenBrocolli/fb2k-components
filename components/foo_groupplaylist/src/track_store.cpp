@@ -120,7 +120,7 @@ private:
 	}
 
 	// "YYYY-MM-DD hh:mm:ss" in local time, which the query syntax reads for "DURING LAST 2 WEEKS" and the like.
-	static bool WriteTime(uint64_t time, titleformat_text_out* out) {
+	static bool WriteTime(FileTime time, titleformat_text_out* out) {
 		if (time == 0) return false;
 		out->write(titleformat_inputtypes::meta, pfc::format_filetimestamp(time));
 		return true;
@@ -158,7 +158,7 @@ void Update(metadb_handle_list_cref tracks, const std::function<bool(TrackRecord
 	Index()->dispatch_refresh(guid_track_index, changed);
 }
 
-uint64_t Now() {
+FileTime Now() {
 	return filetimestamp_from_system_timer();
 }
 

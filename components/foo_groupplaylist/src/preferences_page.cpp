@@ -19,17 +19,17 @@ namespace {
 // Smooth scrolling and header pinning belong to the Scrolling page, and the star colour and the hearts to the
 // Ratings and likes page; this page leaves them as saved.
 struct PageValues {
-	ViewSettings view;
+	PageViewSettings<SettingsPage::Main> view;
 	UiLanguage language;
 	TextRendering rendering;
 
 	bool operator==(const PageValues& other) const {
-		return language == other.language && rendering == other.rendering && SameSettings(view, other.view, SettingsPage::Main);
+		return language == other.language && rendering == other.rendering && view == other.view;
 	}
 };
 
 PageValues SavedValues() {
-	return { LoadViewSettings(), GetUiLanguage(), GetTextRendering() };
+	return { { LoadViewSettings() }, GetUiLanguage(), GetTextRendering() };
 }
 
 // foobar2000's highlight colour (Default UI colours), which the group header and label text use without their own.
@@ -38,7 +38,6 @@ COLORREF FoobarHighlightColor() {
 	return colors.is_valid() ? colors->getSysColor(COLOR_HOTLIGHT) : GetSysColor(COLOR_HOTLIGHT);
 }
 
-// The title of the page's message boxes.
 const wchar_t kMessageTitle[] = L"GroupPlaylist";
 
 // The DPI of the screen, which the font dialog sizes its fonts for.
@@ -58,35 +57,25 @@ public:
 	enum { IDD = IDD_PREFERENCES };
 
 	explicit PreferencesDialog(preferences_page_callback::ptr callback)
-		: m_callback(callback), m_values(SavedValues()), m_lastSaved(m_values.view) {
+		: m_callback(callback), m_values(SavedValues()), m_lastSaved(m_values.view.fields) {
 		s_open = this;
 	}
 	~PreferencesDialog() { if (s_open == this) s_open = nullptr; }
 
-	// The page while it exists, so a change made in a panel shows on it. foobar2000 keeps a page that was shown
-	// until Preferences closes.
+	// The page while it exists, so a change made in a panel shows on it.
 	static PreferencesDialog* s_open;
 
-	// The page's part of the panels' preview while it is shown: its view settings, with the other pages' parts of
-	// view kept.
-	ViewSettings WithEdits(const ViewSettings& view) const {
-		if (!m_previewing) return view;
-		ViewSettings edited = m_values.view;
-		KeepOtherPagesParts(view, edited);
-		return edited;
-	}
-
-	// The Scrolling page's and the Ratings and likes page's settings, taken from `from`.
-	static void KeepOtherPagesParts(const ViewSettings& from, ViewSettings& to) {
-		CopySettings(from, to, SettingsPage::Scrolling);
-		CopySettings(from, to, SettingsPage::Ratings);
+	// The page's part of the panels' preview while it is shown: view with this page's settings replaced.
+	ViewSettings WithEdits(ViewSettings view) const {
+		if (m_previewing) m_values.view.CopyTo(view);
+		return view;
 	}
 
 	// A panel saved one of this page's settings: a new cover size (Ctrl+wheel, dragging the cover column) or column
 	// dragging (the header menu). The page takes only what changed since it last looked (TakeChangedSettings).
 	void TakePanelChanges() {
 		const ViewSettings saved = LoadViewSettings();
-		const bool taken = TakeChangedSettings(saved, m_lastSaved, m_values.view, SettingsPage::Main);
+		const bool taken = m_values.view.TakeChanged(saved, m_lastSaved);
 		m_lastSaved = saved;
 		if (!taken) return;
 		if (m_hWnd) ShowValues();
@@ -104,8 +93,8 @@ public:
 		if (languageChanged) SetUiLanguage(m_values.language);
 		SetTextRendering(m_values.rendering);
 		// This also redraws the column titles and track counts, so a new language or text rendering shows in every panel.
-		ViewSettings view = m_values.view;
-		KeepOtherPagesParts(LoadViewSettings(), view);
+		ViewSettings view = LoadViewSettings();
+		m_values.view.CopyTo(view);
 		PlaylistView::ApplyViewSettings(view);
 		if (languageChanged) {
 			m_texts.Retranslate();
@@ -136,6 +125,7 @@ public:
 		COMMAND_HANDLER_EX(IDC_PREF_SUMMARY_PLACE, CBN_SELCHANGE, OnSummaryPlaceChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SORT_ON_CLICK, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_DRAG_COLUMNS, OnCheckChanged)
+		COMMAND_HANDLER_EX(IDC_PREF_ANIMATE_COLUMNS, CBN_SELCHANGE, OnColumnMoveStyleChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SHOW_HEADERS, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_SCROLL_PER_LIST, OnCheckChanged)
 		COMMAND_ID_HANDLER_EX(IDC_PREF_COLUMNS_PER_LIST, OnCheckChanged)
@@ -168,7 +158,7 @@ private:
 	// Not applied: the panels show the saved settings again. Nothing is redrawn when the page shows no edit.
 	void OnDestroy() {
 		const PageValues saved = SavedValues();
-		const bool edited = !(PageValues{ WithEdits(saved.view), saved.language, saved.rendering } == saved);
+		const bool edited = !(PageValues{ { WithEdits(saved.view.fields) }, saved.language, saved.rendering } == saved);
 		m_previewing = false;
 		if (edited) ShowPreferencesPreview();
 		SetMsgHandled(FALSE);
@@ -200,12 +190,17 @@ private:
 		summaryPlace.AddString(TrW("Group headers and label rows").c_str());
 		summaryPlace.AddString(TrW("Group headers only").c_str());
 		summaryPlace.AddString(TrW("Label rows only").c_str());
+		// How a dragged column moves: first with animation (animateColumnMoves on), then without.
+		CComboBox columnMoves(GetDlgItem(IDC_PREF_ANIMATE_COLUMNS));
+		columnMoves.ResetContent();
+		columnMoves.AddString(TrW("With animation").c_str());
+		columnMoves.AddString(TrW("Without animation").c_str());
 	}
 
 	void ShowValues() {
 		const bool wasShowing = m_showing;
 		m_showing = true;
-		const ViewSettings& view = m_values.view;
+		const ViewSettings& view = m_values.view.fields;
 		CheckDlgButton(IDC_PREF_TRACK_FONT_CUSTOM, view.customTrackFont ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_HEADER_FONT_CUSTOM, view.customHeaderFont ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_HEADER_COLOR_CUSTOM, view.customHeaderColor ? BST_CHECKED : BST_UNCHECKED);
@@ -216,6 +211,7 @@ private:
 		CComboBox(GetDlgItem(IDC_PREF_SUMMARY_PLACE)).SetCurSel(static_cast<int>(view.trackSummaryPlace));
 		CheckDlgButton(IDC_PREF_SORT_ON_CLICK, view.sortOnHeaderClick ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_DRAG_COLUMNS, view.dragColumns ? BST_CHECKED : BST_UNCHECKED);
+		CComboBox(GetDlgItem(IDC_PREF_ANIMATE_COLUMNS)).SetCurSel(view.animateColumnMoves ? 0 : 1);
 		CheckDlgButton(IDC_PREF_SHOW_HEADERS, view.showColumnHeaders ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_SCROLL_PER_LIST, view.scrollPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
 		CheckDlgButton(IDC_PREF_COLUMNS_PER_LIST, view.columnsPerPlaylist ? BST_CHECKED : BST_UNCHECKED);
@@ -230,7 +226,7 @@ private:
 	}
 
 	void ShowFontsAndColors() {
-		const ViewSettings& view = m_values.view;
+		const ViewSettings& view = m_values.view.fields;
 		SetDlgItemText(IDC_PREF_TRACK_FONT_NAME, DescribeFont(view.trackFont).c_str());
 		SetDlgItemText(IDC_PREF_HEADER_FONT_NAME, DescribeFont(view.headerFont).c_str());
 		GetDlgItem(IDC_PREF_TRACK_FONT_BUTTON).EnableWindow(view.customTrackFont);
@@ -238,6 +234,7 @@ private:
 		GetDlgItem(IDC_PREF_HEADER_FONT_BUTTON).EnableWindow(view.customHeaderFont);
 		GetDlgItem(IDC_PREF_HEADER_FONT_NAME).EnableWindow(view.customHeaderFont);
 		GetDlgItem(IDC_PREF_SUMMARY_PLACE).EnableWindow(view.showTrackSummary);
+		GetDlgItem(IDC_PREF_ANIMATE_COLUMNS).EnableWindow(view.dragColumns);
 		GetDlgItem(IDC_PREF_HEADER_COLOR).EnableWindow(view.customHeaderColor);
 		GetDlgItem(IDC_PREF_LABEL_COLOR).EnableWindow(view.customLabelColor);
 		GetDlgItem(IDC_PREF_HEADER_SWATCH).Invalidate();
@@ -252,7 +249,7 @@ private:
 
 	void OnCheckChanged(UINT, int id, CWindow) {
 		const bool checked = IsDlgButtonChecked(id) == BST_CHECKED;
-		ViewSettings& view = m_values.view;
+		ViewSettings& view = m_values.view.fields;
 		switch (id) {
 		case IDC_PREF_TRACK_FONT_CUSTOM: view.customTrackFont = checked; break;
 		case IDC_PREF_HEADER_FONT_CUSTOM: view.customHeaderFont = checked; break;
@@ -277,8 +274,8 @@ private:
 		const int value = static_cast<int>(GetDlgItemInt(id, &valid, FALSE));
 		if (!valid) return;
 		const int clamped = id == IDC_PREF_ROW_PADDING ? ClampRowPadding(value) : ClampCoverSize(value);
-		if (id == IDC_PREF_ROW_PADDING) m_values.view.rowPadding = clamped;
-		else m_values.view.coverSize = clamped;
+		if (id == IDC_PREF_ROW_PADDING) m_values.view.fields.rowPadding = clamped;
+		else m_values.view.fields.coverSize = clamped;
 		// While a number is being typed ("1", "15" on the way to 150) it can lie outside the range. The panels wait
 		// for a number inside it rather than flash the smallest album art.
 		if (clamped == value) ShowPreferencesPreview();
@@ -287,7 +284,13 @@ private:
 
 	void OnSummaryPlaceChanged(UINT, int, CWindow) {
 		const int index = CComboBox(GetDlgItem(IDC_PREF_SUMMARY_PLACE)).GetCurSel();
-		if (index >= 0) m_values.view.trackSummaryPlace = TrackSummaryPlaceFrom(index);
+		if (index >= 0) m_values.view.fields.trackSummaryPlace = TrackSummaryPlaceFrom(index);
+		Changed();
+	}
+
+	void OnColumnMoveStyleChanged(UINT, int, CWindow) {
+		const int index = CComboBox(GetDlgItem(IDC_PREF_ANIMATE_COLUMNS)).GetCurSel();
+		if (index >= 0) m_values.view.fields.animateColumnMoves = index == 0;
 		Changed();
 	}
 
@@ -304,7 +307,7 @@ private:
 	}
 
 	void OnChooseFont(UINT, int id, CWindow) {
-		LOGFONTW& font = id == IDC_PREF_TRACK_FONT_BUTTON ? m_values.view.trackFont : m_values.view.headerFont;
+		LOGFONTW& font = id == IDC_PREF_TRACK_FONT_BUTTON ? m_values.view.fields.trackFont : m_values.view.fields.headerFont;
 		LOGFONTW chosen = FontAtDpi(font, ScreenDpi());
 		CHOOSEFONTW dialog = { sizeof(dialog) };
 		dialog.hwndOwner = m_hWnd;
@@ -316,7 +319,7 @@ private:
 	}
 
 	void OnChooseColor(UINT, int id, CWindow) {
-		ViewSettings& view = m_values.view;
+		ViewSettings& view = m_values.view.fields;
 		COLORREF& color = id == IDC_PREF_HEADER_COLOR ? view.headerColor : view.labelColor;
 		static COLORREF customColors[16] = {};
 		CHOOSECOLORW dialog = { sizeof(dialog) };
@@ -361,7 +364,7 @@ private:
 		ReloadScrollingPage();
 		ReloadRatingPage();
 		m_values = SavedValues();
-		m_lastSaved = m_values.view;
+		m_lastSaved = m_values.view.fields;
 		ShowPreferencesPreview();
 		if (GetUiLanguage() != language) {
 			m_texts.Retranslate();
@@ -379,7 +382,7 @@ private:
 		}
 		CDCHandle dc(item->hDC);
 		// Without its own colour each follows foobar2000's highlight colour, so the swatch shows the colour in use.
-		const ViewSettings& view = m_values.view;
+		const ViewSettings& view = m_values.view.fields;
 		const bool header = id == IDC_PREF_HEADER_SWATCH;
 		const bool own = header ? view.customHeaderColor : view.customLabelColor;
 		const COLORREF color = !own ? FoobarHighlightColor() : header ? view.headerColor : view.labelColor;
@@ -389,7 +392,6 @@ private:
 
 	const preferences_page_callback::ptr m_callback;
 	PageValues m_values;
-	// The cover size and column dragging as saved when the page last looked (TakePanelChanges).
 	// The saved settings when the page last looked (TakePanelChanges).
 	ViewSettings m_lastSaved;
 	// True while the page or a spin button writes a number into an edit box, so that write is not read back as an edit.
@@ -405,7 +407,6 @@ class PreferencesPage : public preferences_page_impl<PreferencesDialog> {
 public:
 	const char* get_name() override { return "GroupPlaylist"; }
 	GUID get_guid() override { return guid_preferences_page; }
-	// Component settings live under Tools, as in other foobar2000 components.
 	GUID get_parent_guid() override { return preferences_page::guid_tools; }
 };
 
@@ -420,9 +421,9 @@ void PanelSettingsChanged() {
 	TakeScrollingPageChanges();
 }
 
-void ShowPreferencesPreview() {
+void ShowPreferencesPreview(PreviewChange change) {
 	ViewSettings shown = LoadViewSettings();
 	if (PreferencesDialog::s_open) shown = PreferencesDialog::s_open->WithEdits(shown);
-	PlaylistView::ShowViewSettings(WithRatingPageEdits(WithScrollingPageEdits(shown)));
+	PlaylistView::ShowViewSettings(WithRatingPageEdits(WithScrollingPageEdits(shown)), change);
 }
 

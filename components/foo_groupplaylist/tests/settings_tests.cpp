@@ -8,8 +8,9 @@ namespace {
 void TheBuiltInScrollPresetsAreInRangeAndDefaultIsTheOldFeel() {
 	const std::vector<ScrollPreset> presets = BuiltInScrollPresets();
 	CHECK(presets.size() == 3);
+	CHECK(DefaultScrollPreset().name == kDefaultScrollPresetName);
+	CHECK(DefaultScrollPreset().params == smooth_scroll::InertiaParams{});
 	CHECK(presets[0].name == kDefaultScrollPresetName);
-	CHECK(presets[0].params == smooth_scroll::InertiaParams{});
 	for (const ScrollPreset& preset : presets) CHECK(ClampInertiaParams(preset.params) == preset.params);
 	// Light stops sooner than Default and speeds up less; Heavy glides longer, moves less per slow notch and speeds up more.
 	CHECK(presets[1].params.tauMs < presets[0].params.tauMs && presets[0].params.tauMs < presets[2].params.tauMs);

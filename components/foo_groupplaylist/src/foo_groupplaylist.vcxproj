@@ -78,6 +78,7 @@
     <ClCompile Include="emoji_table.cpp" />
     <ClCompile Include="columns_page.cpp" />
     <ClCompile Include="groups_page.cpp" />
+    <ClCompile Include="info_lines_popup.cpp" />
     <ClCompile Include="scrolling_page.cpp" />
     <ClCompile Include="settings_transfer.cpp" />
     <ClCompile Include="panel.cpp" />
@@ -97,6 +98,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="column_def.h" />
+    <ClInclude Include="column_drag.h" />
+    <ClInclude Include="effects.h" />
+    <ClInclude Include="info_lines.h" />
+    <ClInclude Include="info_lines_popup.h" />
     <ClInclude Include="column_fit.h" />
     <ClInclude Include="column_places.h" />
     <ClInclude Include="header_sort.h" />

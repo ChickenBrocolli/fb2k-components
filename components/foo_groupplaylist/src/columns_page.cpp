@@ -75,7 +75,6 @@ public:
 	}
 	~ColumnsDialog() { if (s_open == this) s_open = nullptr; }
 
-	// The page while it exists. foobar2000 keeps a page that was shown until Preferences closes.
 	static ColumnsDialog* s_open;
 
 	// Settings were imported: the page drops its edits and shows the saved columns.
@@ -181,7 +180,7 @@ private:
 		return defs;
 	}
 
-	std::vector<ColumnDef> BuiltInEdits() const { return BuiltInEditsFrom(BuiltInColumnDefs(), BuiltInRows()); }
+	std::vector<BuiltInColumnEdit> BuiltInEdits() const { return BuiltInEditsFrom(BuiltInColumnDefs(), BuiltInRows()); }
 
 	// The names of all columns in list order: the order of the Columns menu.
 	std::vector<std::string> Order() const {
@@ -253,7 +252,7 @@ private:
 		const bool custom = hasRow && !IsBuiltIn(index);
 		// Only text columns take a pattern: Duration draws the time played or left, and the Rating and Like columns'
 		// stars and heart come from code, which also sets where they sit, so those two keep their alignment too.
-		const bool patternEditable = hasRow && m_rows[index].def.kind == ColumnKind::Text;
+		const bool patternEditable = hasRow && TakesPattern(m_rows[index].def.kind);
 		const bool alignmentEditable = hasRow && !IsClickColumn(m_rows[index].def.kind);
 		m_loadingFields = true;
 		uSetDlgItemText(m_hWnd, IDC_COLUMN_NAME, hasRow ? ColumnTitle(m_rows[index].def).c_str() : "");
@@ -329,7 +328,7 @@ private:
 			}
 			m_list.SetText(index, 0, ColumnTitle(def));
 		} else if (id == IDC_COLUMN_PATTERN) {
-			if (def.kind != ColumnKind::Text) return;
+			if (!TakesPattern(def.kind)) return;
 			uGetDlgItemText(m_hWnd, IDC_COLUMN_PATTERN, text);
 			def.pattern = text.c_str();
 			m_list.SetText(index, 1, def.pattern);

@@ -26,6 +26,7 @@ inline constexpr UiText kKoreanTexts[] = {
 	{ "Own star colour", "별 색 직접 지정" },
 	{ "Extra row height", "줄 높이 추가" },
 	{ "Album art size", "앨범아트 크기" },
+	{ "Show foobar2000's stub image", "foobar2000 대체 이미지 보이기" },
 	{ "Rating", "별점" },
 	{ "Save ratings in", "별점 저장 위치" },
 	{ "Save likes in", "좋아요 저장 위치" },
@@ -47,6 +48,16 @@ inline constexpr UiText kKoreanTexts[] = {
 	{ "Pin group headers", "그룹 머리글 고정" },
 	{ "Auto-size columns", "열 너비 자동 맞춤" },
 	{ "Drag to reorder columns", "끌어서 열 순서 바꾸기" },
+	{ "With animation", "애니메이션 사용" },
+	{ "Without animation", "애니메이션 사용 안 함" },
+	{ "Tick the lines to show. Drag to reorder.", "보여 줄 줄을 체크하고, 끌어서 순서를 바꿉니다." },
+	{ "As in the pattern", "패턴대로" },
+	{ "Edit the pattern...", "패턴 편집..." },
+	{ "The lines beside the cover were picked in the panel.", "표지 옆 정보 줄은 패널에서 골랐습니다." },
+	{ "Use the pattern", "패턴대로 보이기" },
+	{ "Year", "연도" },
+	{ "Label", "레이블" },
+	{ "Bit depth", "비트 깊이" },
 	{ "Show column headers", "열 제목 표시" },
 	{ "Off", "끄기" },
 	{ "Both also switch at once from the menu of a right-click on the column titles.", "두 가지 모두 열 제목을 오른쪽 클릭한 메뉴에서도 바로 켜고 끌 수 있습니다." },
@@ -262,6 +273,6 @@ inline const char* KoreanTextFor(std::string_view english) {
 
 // "12 tracks" or "12곡".
 inline std::string TrackCountText(size_t tracks, bool korean) {
-	if (korean) return std::to_string(tracks) + "\xEA\xB3\xA1";
+	if (korean) return std::to_string(tracks) + "곡";
 	return std::to_string(tracks) + (tracks == 1 ? " track" : " tracks");
 }

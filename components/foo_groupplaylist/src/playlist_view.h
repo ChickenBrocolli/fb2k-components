@@ -1,15 +1,19 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <vector>
 
 #include <libPPUI/CListControlWithSelection.h>
 
 #include "column_def.h"
+#include "column_drag.h"
 #include "cover_cache.h"
+#include "effects.h"
 #include "group_model.h"
 #include "group_preset.h"
 #include "header_sort.h"
+#include "info_lines.h"
 #include "rating_cell.h"
 #include "rating_store.h"
 #include "smooth_scroll.h"
@@ -45,10 +49,19 @@ public:
 	void ChooseUngrouped();
 	// The cover block under a point in client coordinates, if the point is on a cover.
 	std::optional<size_t> CoverBlockAt(CPoint clientPoint) const;
+	// The cover block whose info lines are under a point in client coordinates.
+	std::optional<size_t> InfoBlockAt(CPoint clientPoint) const;
+	// The text an info line entry (info_lines.h) gives for a cover block, for the info popup. Empty when it gives none.
+	std::string InfoValue(size_t block, const std::string& entry) const;
+	// Saves the info lines picked for a preset, or with none given drops its choice, and updates every panel.
+	static void SetPresetInfoLines(const std::string& presetName, const std::optional<std::vector<std::string>>& lines);
+	// Saves the info lines picked for every preset and updates every panel.
+	static void ApplyInfoLineChoices(const InfoLineChoices& choices);
 	void ReloadCover(size_t block);
+	// Whether the block's track was looked at and has no album art. False while its art still loads.
+	bool BlockHasNoCover(size_t block) const;
 	void ReloadAllCovers();
 	void OpenCoverFolder(size_t block);
-	// Sorts the playlist by the sort pattern of the active preset.
 	void SortByActivePreset();
 	// Keeps the current preset and returns false when no preset has this name.
 	bool SelectPresetByName(const char* name);
@@ -58,7 +71,9 @@ public:
 	static void ApplyViewSettings(const ViewSettings& settings);
 	// Redraws every panel with these settings without saving them, so the Scrolling page can show a change at once.
 	// ApplyViewSettings, or this with LoadViewSettings(), puts the saved ones back.
-	static void ShowViewSettings(const ViewSettings& settings);
+	static void ShowViewSettings(const ViewSettings& settings, PreviewChange change = PreviewChange::Any);
+	// Saves a new cover size and shows it in every panel.
+	static void ApplyCoverSize(int size);
 	// The playlist font of the host. The panel uses it unless the Preferences page sets another font.
 	void SetHostFont(HFONT font);
 	// Saves the shared presets and updates every panel. renames pairs an old name with its new name.
@@ -107,11 +122,15 @@ public:
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnStarMouseMove)
 		MESSAGE_HANDLER(WM_MOUSEWHEEL, OnSmoothWheel)
 		MESSAGE_HANDLER(kSmoothScrollMessage, OnSmoothScrollFrame)
+		NOTIFY_CODE_HANDLER(HDN_BEGINDRAG, OnHeaderBeginDrag)
 		NOTIFY_CODE_HANDLER(HDN_ITEMCHANGING, OnHeaderItemChanging)
+		NOTIFY_CODE_HANDLER(HDN_BEGINTRACK, OnHeaderBeginTrack)
 		NOTIFY_CODE_HANDLER(HDN_ENDTRACK, OnHeaderEndTrack)
 		NOTIFY_CODE_HANDLER(HDN_DIVIDERDBLCLICK, OnHeaderDividerDoubleClick)
 		NOTIFY_CODE_HANDLER(NM_CUSTOMDRAW, OnChildCustomDraw)
 		MESSAGE_HANDLER(kColumnDragEndedMessage, OnColumnDragEnded)
+		MESSAGE_HANDLER(kColumnSlideMessage, OnColumnSlideFrame)
+		MESSAGE_HANDLER(kEffectFrameMessage, OnEffectFrame)
 		MESSAGE_HANDLER(WM_TIMER, OnSmoothScrollTimer)
 		CHAIN_MSG_MAP(CListControlWithSelectionBase)
 	END_MSG_MAP()
@@ -146,6 +165,8 @@ protected:
 	void RenderSubItemText(t_size item, t_size subItem, const CRect& subItemRect, const CRect& updateRect, CDCHandle dc, bool allowColors) override;
 	void RenderGroupOverlayColumn(size_t baseItem, size_t subItem, const CRect& albumColumnRect, const CRect& updateRect, CDCHandle dc) override;
 	void RenderOverlay2(const CRect& updateRect, CDCHandle dc) override;
+	void RenderItemText(t_size item, const CRect& itemRect, const CRect& updateRect, CDCHandle dc, bool allowColors) override;
+	void RenderGroupOverlay(size_t baseItem, const CRect& groupWhole, const CRect& updateRect, CDCHandle dc) override;
 	void OnViewOriginChange(CPoint delta) override;
 	void EnsureVisibleRectAbs(const CRect& rect) override;
 	bool GetTooltipData(CPoint pointAbs, pfc::string_base& text, CRect& rect, CFontHandle& font) const override;
@@ -201,6 +222,10 @@ private:
 	LRESULT OnPinnedHeaderButton(UINT message, WPARAM, LPARAM position, BOOL& handled);
 	bool IsRatingColumn(size_t subItem) const;
 	bool IsLikeColumn(size_t subItem) const;
+	// The Duration cell of the playing track, whose time changes every second and switches on a click.
+	bool IsPlayingDurationCell(size_t item, size_t subItem) const;
+	// What a click on the column's header sorts by: the stars and the heart by where they are kept.
+	static const char* SortPattern(const ColumnDef& def);
 	void RenderLikeCell(size_t item, size_t subItem, const CRect& subItemRect, CDCHandle dc);
 	void WriteLikeOf(size_t item, bool liked);
 	int StarSlotWidth() const;
@@ -228,6 +253,10 @@ private:
 	void OnRowsMoved();
 	void ClearGroupFocus();
 	int Scaled(int pixelsAt96Dpi) const;
+	// Column widths between 96 DPI and the screen, rounded as the header rounds them.
+	int ScreenWidth(WidthAt96Dpi width) const;
+	int WidthAt96DpiOf(int screenWidth) const;
+	WidthAt96Dpi ColumnWidthAt96Dpi(size_t column) const;
 	int m_lastClientWidth = -1;
 	void ApplyFonts();
 	LRESULT OnCoverDoubleClick(UINT, WPARAM, LPARAM position, BOOL& handled);
@@ -249,6 +278,62 @@ private:
 	std::optional<size_t> LabelLevelAtPoint(CPoint clientPoint, size_t& item) const;
 	size_t DropIndexAt(CPoint clientPoint, DragUnit unit, size_t level) const;
 	LRESULT OnCoverWheel(UINT, WPARAM wheel, LPARAM, BOOL& handled);
+	bool IsHiddenColumn(size_t column) const;
+	bool InfoFollowsCover() const;
+	bool IsCoverDrag(size_t column) const;
+	int CoverSize() const;
+	void DragCoverColumn(int width);
+	void PushTrackColumns(const std::vector<size_t>& onScreen, size_t divider, int requestedWidth);
+	int CellContentWidth(size_t item, size_t column, CDCHandle dc);
+	int ColumnContentWidth(size_t column);
+	void ShowTrackWidths(const std::vector<size_t>& onScreen, const std::vector<int>& widths);
+	void FitColumnToContent(size_t column);
+	LRESULT OnHeaderBeginDrag(int, LPNMHDR header, BOOL&);
+	void WaitForColumnDrag(int x);
+	void BeginColumnDrag(int column, int grabX);
+	void MoveColumnDrag(int x);
+	void EndColumnDrag(bool keep);
+	void ShowColumnOrder(const std::vector<int>& order);
+	bool RunColumnUndoKey(WPARAM key);
+	// The columns as they are: the layout to rebuild them from, and, for the same columns, their list order, header order
+	// and widths in pixels.
+	struct ColumnState {
+		ColumnLayout layout;
+		std::vector<std::string> listNames;
+		std::vector<int> order;
+		std::vector<int> widths;
+	};
+	ColumnState CaptureColumnState();
+	void RememberColumnState(ColumnState before);
+	bool StepColumnState(std::vector<ColumnState>& from, std::vector<ColumnState>& to);
+	void RestoreColumnState(const ColumnState& state);
+	void SlideToColumnOrder(const std::vector<int>& order);
+	LRESULT OnHeaderBeginTrack(int, LPNMHDR header, BOOL& handled);
+	static double NowMs();
+	bool AnimateColumnMoves() const;
+	bool ColumnsMoving() const;
+	std::optional<size_t> LiftedColumn() const;
+	int ColumnOffset(size_t column) const;
+	void DrawColumnFrame();
+	void StartColumnClock();
+	LRESULT OnColumnSlideFrame(UINT, WPARAM, LPARAM, BOOL&);
+	void StartEffectClock();
+	LRESULT OnEffectFrame(UINT, WPARAM, LPARAM, BOOL&);
+	void SlideColumnWidths(const std::vector<size_t>& columns, const std::vector<int>& from, const std::vector<int>& to, std::function<void()> done);
+	void FinishColumnWidthSlide();
+	void ApplyColumnToggle(const std::string& name);
+	double PopScaleOf(size_t item, size_t subItem, int star) const;
+	void StartPop(size_t item, size_t subItem, int star);
+	void DrawHeaderTitle(CDCHandle dc, size_t column, const CRect& itemRect);
+	void PaintMovingHeader(HWND window);
+	void ShowCoverSize();
+	// The row at the top of the view, and how far its top is from the view's top (zero or less).
+	struct TopRow {
+		size_t row;
+		int offset;
+	};
+	TopRow CurrentTopRow() const;
+	void ResizeBlocks(TopRow top);
 	LRESULT OnHeaderItemChanging(int, LPNMHDR header, BOOL& handled);
 	LRESULT OnHeaderEndTrack(int, LPNMHDR header, BOOL& handled);
 	LRESULT OnHeaderDividerDoubleClick(int, LPNMHDR header, BOOL& handled);
@@ -260,7 +345,7 @@ private:
 	void ApplyCoverColumnWidth();
 	std::vector<size_t> TrackColumnsOnScreen() const;
 	void SaveTrackColumnWeights();
-	void FitTrackColumns();
+	bool FitTrackColumns(bool updateView = true);
 	void ApplyHeaderDragging();
 	static LRESULT CALLBACK HeaderProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR view);
 	CRect GetClientRectHook() const override;
@@ -277,6 +362,7 @@ private:
 	void RememberPlaylistGrouping(const std::string& name);
 	const ColumnDef* FindColumnDef(const std::string& name) const;
 	void CaptureColumnWidths();
+	void CaptureColumnWidths(bool readTrackWidths);
 	ColumnLayout CapturedLayout();
 	void RebuildColumns();
 	void OnCustomColumnsChanged(const std::vector<std::pair<std::string, std::string>>& renames);
@@ -285,6 +371,10 @@ private:
 	std::string SectionSummary(size_t item, size_t level) const;
 	void RenderCover(size_t block, const CRect& blockRect, CDCHandle dc);
 	void RenderInfoLines(size_t block, const CRect& blockRect, CDCHandle dc);
+	void RenderPickedInfoLines(size_t block, const CRect& blockRect, CDCHandle dc);
+	void LoadInfoLines();
+	void OnInfoLinesChanged();
+	std::optional<size_t> BlockInColumnAt(CPoint clientPoint, size_t column) const;
 
 	void on_items_added(t_size base, metadb_handle_list_cref items, const bit_array& selection) override;
 	void on_items_reordered(const t_size* order, t_size count) override;
@@ -318,11 +408,78 @@ private:
 	bool m_autoSizeColumns = true;
 	// True while this view sets column widths itself, so the header's notices of them are not taken for a drag.
 	bool m_fittingColumns = false;
+	// While the user drags the cover column's divider, the cover follows the width at the size held here (96 DPI).
+	// The setting is saved, and every panel follows, when the drag ends.
+	std::optional<int> m_dragCoverSize;
+	// A track column's edge dragged while the columns fill the panel (PushTrackColumns): the track columns on screen,
+	// the edge (right of columns[divider]), the pointer and the widths when the drag started, and the widths their
+	// content needs.
+	struct DividerDrag {
+		std::vector<size_t> columns;
+		size_t divider = 0;
+		int startX = 0;
+		std::vector<int> widths;
+		std::vector<int> fits;
+		std::vector<bool> fixedContent;
+	};
+	std::optional<DividerDrag> m_dividerDrag;
+	// A column title dragged to move its column (OnHeaderBeginDrag). Waiting: the title was pressed and moved a little,
+	// but not yet held long or moved far enough to move its column (ColumnDragStarts), so letting go is still a click.
+	// Ended lasts until the mouse button comes up, so the header's click and its further drag notices are ignored.
+	enum class HeaderDrag { None, Waiting, Dragging, Ended };
+	HeaderDrag m_headerDrag = HeaderDrag::None;
+	// When and where the header was last pressed (header client x), and the column whose title waits to move.
+	DWORD m_headerPressTime = 0;
+	int m_headerPressX = 0;
+	int m_waitingColumn = -1;
+	std::optional<ColumnDrag> m_columnDrag;
+	// The columns before each change of their order, widths or set, the latest last, and the changes undone, for Ctrl+Z
+	// and Ctrl+Y. They last while those changes are the latest in the panel: a change of the playlist drops them, and
+	// Ctrl+Z undoes the playlist again.
+	std::vector<ColumnState> m_columnUndo;
+	std::vector<ColumnState> m_columnRedo;
+	// The columns when a column drag or an edge drag started, kept until it ends.
+	std::optional<ColumnState> m_columnsBeforeDrag;
+	// Columns sliding to new places during and after a column drag; none without animation. m_columnFrameMs is the
+	// time of the frame being drawn, so every part of one frame puts a column at the same place.
+	std::optional<ColumnSlides> m_columnSlides;
+	SmoothScrollTimingThread m_columnClock;
+	double m_columnFrameMs = 0;
+	static constexpr UINT kColumnSlideMessage = WM_APP + 44;
+	// The panel's other animations (effects.h), drawn once per display refresh while any runs: covers fading in, track
+	// column widths sliding (then done runs), and a clicked heart or star popping (star 0 is the heart).
+	SmoothScrollTimingThread m_effectClock;
+	static constexpr UINT kEffectFrameMessage = WM_APP + 45;
+	struct ColumnWidthSlide {
+		std::vector<size_t> columns;
+		WidthSlide slide;
+		std::function<void()> done;
+	};
+	std::optional<ColumnWidthSlide> m_columnWidthSlide;
+	bool m_coversFading = false;
+	struct Pop {
+		size_t item;
+		size_t subItem;
+		int star;
+		double startMs;
+	};
+	std::optional<Pop> m_pop;
 	titleformat_object::ptr m_albumScript;
 	titleformat_object::ptr m_blockScript;
 	std::vector<titleformat_object::ptr> m_subgroupScripts;
 	// Lines of text shown beside each cover. Zero hides the info column.
 	int m_blockLineCount = 0;
+	// The lines picked in the info popup for the active preset (info_lines.h), drawn instead of the cover pattern's text.
+	// An item has its translated name, empty when the name is not shown, and its script. A line of the cover pattern
+	// that is no item has a script of its own (WholePatternOf), or when it cannot stand alone the index of its part in
+	// the cover pattern's text.
+	struct InfoLine {
+		std::string label;
+		titleformat_object::ptr script;
+		int patternLine = -1;
+	};
+	bool m_infoLinesPicked = false;
+	std::vector<InfoLine> m_infoLines;
 	GroupModel m_groups;
 	CoverCache m_covers;
 	TextPainter m_text;
@@ -340,7 +497,6 @@ private:
 	// The unit of the drag that is running, and for a section drag the label level it started on.
 	DragUnit m_dragUnit = DragUnit::Tracks;
 	size_t m_dragLevel = 0;
-	// The last sort by a column header, and the playlist it sorted.
 	HeaderSortMemory<GUID> m_headerSort;
 	// True while this view sorts the playlist itself, so its own reorder does not count as someone else's.
 	bool m_sorting = false;
@@ -381,12 +537,7 @@ private:
 	// Held while the panel has the focus, so panels that show the selected tracks (Selection Properties,
 	// Album Art set to the selection) follow this playlist's selection.
 	ui_selection_holder::ptr m_selectionHolder;
-	// The row at the top of the view before rows are removed, and how far its top was from the view's top
-	// (on_items_removing, KeepTopRow).
-	struct TopRow {
-		size_t row;
-		int offset;
-	};
+	// The row at the top of the view before rows are removed (on_items_removing, KeepTopRow).
 	std::optional<TopRow> m_topBeforeRemoval;
 	// Columns per playlist (EnterPlaylistColumns). The base is the panel's layout, set while the setting is on.
 	// The layout on entering is set while a playlist is shown with the setting on, and tells a change apart.

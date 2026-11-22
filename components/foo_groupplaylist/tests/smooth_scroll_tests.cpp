@@ -1,3 +1,5 @@
+#include <limits>
+
 #include "check.h"
 
 #include "smooth_scroll_math.h"
@@ -115,13 +117,13 @@ void ANewFrictionKeepsTheCoastingThatIsLeft() {
 	Momentum momentum = StartMomentum(0, 0.0);
 	Push(momentum, 100, 0.0);
 	Advance(momentum, 50.0);
-	const double left = momentum.velocity * momentum.tauMs;
+	const double left = momentum.velocityPxPerMs * momentum.tauMs;
 	InertiaParams retuned;
 	retuned.tauMs = 250.0;
 	retuned.accelerationStep = 0.0;
 	Push(momentum, 100, 500.0, retuned);  // a slow notch: no acceleration
 	CHECK(momentum.tauMs == 250.0);
-	CHECK(std::abs(momentum.velocity * momentum.tauMs - (left + 100.0)) < 1e-6);
+	CHECK(std::abs(momentum.velocityPxPerMs * momentum.tauMs - (left + 100.0)) < 1e-6);
 }
 
 void TheQuickGapDecidesWhichNotchesAccelerate() {
@@ -152,6 +154,18 @@ void TheStepAndTheMaximumShapeTheAcceleration() {
 	CHECK(AccelerationFactor(3) == 1.0 + 0.4 * 3);
 }
 
+// Only whole refreshes are skipped, so frames that take less than a refresh skip none: the 9 ms frames of a 60 Hz
+// laptop kept their full frame rate only after ui_helpers's half-refresh threshold was dropped.
+void PaintingSkipsOnlyTheWholeRefreshesItTakes() {
+	CHECK(RefreshesToSkip(9.0, 16.7) == 0);
+	CHECK(RefreshesToSkip(16.6, 16.7) == 0);
+	CHECK(RefreshesToSkip(17.0, 16.7) == 1);
+	CHECK(RefreshesToSkip(40.0, 16.7) == 2);
+	CHECK(RefreshesToSkip(0.0, 16.7) == 0);
+	// Before a refresh is measured the shortest one is the largest number, and nothing is skipped.
+	CHECK(RefreshesToSkip(5.0, std::numeric_limits<double>::max()) == 0);
+}
+
 } // namespace
 
 void RunSmoothScrollTests() {
@@ -166,4 +180,5 @@ void RunSmoothScrollTests() {
 	ANewFrictionKeepsTheCoastingThatIsLeft();
 	TheQuickGapDecidesWhichNotchesAccelerate();
 	TheStepAndTheMaximumShapeTheAcceleration();
+	PaintingSkipsOnlyTheWholeRefreshesItTakes();
 }

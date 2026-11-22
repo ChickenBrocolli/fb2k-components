@@ -90,7 +90,6 @@ public:
 
 	~GroupsDialog() { if (s_open == this) s_open = nullptr; }
 
-	// The page while it exists. foobar2000 keeps a page that was shown until Preferences closes.
 	static GroupsDialog* s_open;
 
 	// Settings were imported: the page drops its edits and shows the saved presets.
@@ -126,6 +125,7 @@ public:
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_UP, OnMove)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_DOWN, OnMove)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_SYNTAX, OnSyntaxHelp)
+		COMMAND_ID_HANDLER_EX(IDC_PRESET_INFO_RESET, OnUsePattern)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_HEADER_INSERT, OnInsertField)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_COVER_INSERT, OnInsertField)
 		COMMAND_ID_HANDLER_EX(IDC_PRESET_SUBGROUP_INSERT, OnInsertField)
@@ -163,6 +163,7 @@ private:
 		m_dark.AddDialogWithControls(*this);
 		m_texts.Translate(*this);
 		AttachSyntaxLink(m_syntaxLink, GetDlgItem(IDC_PRESET_SYNTAX), m_dark);
+		AttachSyntaxLink(m_infoLink, GetDlgItem(IDC_PRESET_INFO_RESET), m_dark);
 		m_list.Attach(GetDlgItem(IDC_PRESET_LIST), { { TrW("Name").c_str(), 40 }, { TrW("Group header").c_str(), 60 } });
 		FillList(m_initialIndex);
 		return FALSE;
@@ -206,7 +207,26 @@ private:
 		GetDlgItem(IDC_PRESET_DELETE).EnableWindow(m_rows.size() > 1 && hasRow);
 		GetDlgItem(IDC_PRESET_UP).EnableWindow(index > 0);
 		GetDlgItem(IDC_PRESET_DOWN).EnableWindow(hasRow && index + 1 < static_cast<int>(m_rows.size()));
+		ShowInfoNote();
 		UpdatePreview();
+	}
+
+	// Lines picked in the panel's info popup are shown instead of the cover text, so the page says so and offers the
+	// pattern back. The choice is kept under the name the preset was saved with.
+	void ShowInfoNote() {
+		const int index = SelectedIndex();
+		const bool picked = index >= 0 && !m_rows[index].originalName.empty()
+			&& PickedInfoLines(LoadInfoLineChoices(), m_rows[index].originalName).has_value();
+		GetDlgItem(IDC_PRESET_INFO_NOTE).ShowWindow(picked ? SW_SHOW : SW_HIDE);
+		GetDlgItem(IDC_PRESET_INFO_RESET).ShowWindow(picked ? SW_SHOW : SW_HIDE);
+	}
+
+	// Takes effect at once, as the popup does: the choice is not one of the page's edits.
+	void OnUsePattern(UINT, int, CWindow) {
+		const int index = SelectedIndex();
+		if (index < 0 || m_rows[index].originalName.empty()) return;
+		PlaylistView::SetPresetInfoLines(m_rows[index].originalName, std::nullopt);
+		ShowInfoNote();
 	}
 
 	// What the pattern field the user touched last shows for the focused track, named by that field's label:
@@ -232,7 +252,7 @@ private:
 			if (m_previewField == IDC_PRESET_COVER) {
 				for (size_t bar = value.find('|'); bar != std::string::npos; bar = value.find('|', bar + 2)) value.replace(bar, 1, "\n\t");
 			}
-			constexpr const char* kArrow = " \xE2\x86\x92\t";  // " → " and the tab before the value
+			constexpr char kArrow[] = " →\t";  // and the tab before the value
 			text = Tr(field) + std::string(kArrow) + value;
 		}
 		uSetDlgItemText(m_hWnd, IDC_PRESET_PREVIEW, text.c_str());
@@ -381,6 +401,7 @@ private:
 	bool m_loadingFields = false;
 	fb2k::CDarkModeHooks m_dark;
 	DarkMode::CHyperLink m_syntaxLink;
+	DarkMode::CHyperLink m_infoLink;
 	DialogTexts m_texts;
 	TextPainter m_previewPainter;
 	PreviewTrackWatcher m_previewWatcher{ [this] { if (m_hWnd) UpdatePreview(); } };

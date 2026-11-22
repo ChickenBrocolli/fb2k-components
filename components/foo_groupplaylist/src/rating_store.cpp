@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "track_store.h"
+#include "view_settings_rules.h"
 
 namespace {
 
@@ -13,9 +14,9 @@ constexpr GUID guid_rating_storage = { 0x613e1a94, 0xeb91, 0x4f0b, { 0xbc, 0xd3,
 
 cfg_int cfg_ratingStorage(guid_rating_storage, static_cast<int>(RatingStorage::Statistics));
 
-// -1 until the user picks where likes go: then they go where the rating choice used to send them.
+// kNeverSaved until the user picks where likes go: until then they go where the rating choice sends them.
 constexpr GUID guid_like_storage = { 0x4a92d6c7, 0x1e58, 0x4b3f, { 0x87, 0x0d, 0x5c, 0x61, 0xb4, 0x2e, 0x9f, 0x13 } };
-cfg_int cfg_likeStorage(guid_like_storage, -1);
+cfg_int cfg_likeStorage(guid_like_storage, kNeverSaved);
 
 // Whether SettleRatingStorage has decided, once, for this foobar2000 profile.
 constexpr GUID guid_rating_storage_settled = { 0x0b7d4e29, 0x5f61, 0x4c83, { 0x9a, 0x1e, 0x36, 0xc2, 0x8d, 0x47, 0xf0, 0x5b } };
@@ -106,26 +107,26 @@ RatingStorage GetRatingStorage() {
 	}
 }
 
-void SetRatingStorage(RatingStorage storage) {
-	cfg_ratingStorage = static_cast<int>(storage);
-}
-
 LikeStorage GetLikeStorage() {
 	switch (cfg_likeStorage) {
 	case static_cast<int>(LikeStorage::Store): return LikeStorage::Store;
 	case static_cast<int>(LikeStorage::FileTags): return LikeStorage::FileTags;
 	case static_cast<int>(LikeStorage::Both): return LikeStorage::Both;
 	}
-	// Never picked: what the one choice for ratings and likes meant for likes.
-	switch (GetRatingStorage()) {
+	return LikeStorageFor(GetRatingStorage());
+}
+
+LikeStorage LikeStorageFor(RatingStorage ratings) {
+	switch (ratings) {
 	case RatingStorage::FileTags: return LikeStorage::FileTags;
 	case RatingStorage::Both: return LikeStorage::Both;
 	default: return LikeStorage::Store;
 	}
 }
 
-void SetLikeStorage(LikeStorage storage) {
-	cfg_likeStorage = static_cast<int>(storage);
+void SetStorageChoices(RatingStorage ratings, LikeStorage likes) {
+	cfg_likeStorage = static_cast<int>(likes);
+	cfg_ratingStorage = static_cast<int>(ratings);
 }
 
 // foobar2000 saves a setting only when it differs from its default. Before the store, the default was File tags, so a
@@ -135,7 +136,7 @@ void SettleRatingStorage(bool panelSavedBefore) {
 	if (cfg_ratingStorageSettled) return;
 	cfg_ratingStorageSettled = true;
 	const pfc::string8 name = cfg_var_modern::cfg_var_common::formatVarName(guid_rating_storage);
-	const bool chosen = fb2k::configStore::get()->getConfigInt(name, -1) != -1;
+	const bool chosen = fb2k::configStore::get()->getConfigInt(name, kNeverSaved) != kNeverSaved;
 	if (!chosen && panelSavedBefore) cfg_ratingStorage = static_cast<int>(RatingStorage::FileTags);
 }
 
@@ -180,7 +181,7 @@ const char* LikeReadPattern(LikeStorage storage) {
 void WriteLikes(metadb_handle_list_cref tracks, bool liked, LikeStorage storage) {
 	if (tracks.get_count() == 0) return;
 	if (storage != LikeStorage::FileTags) {
-		const uint64_t now = track_store::Now();
+		const FileTime now = track_store::Now();
 		track_store::Update(tracks, [liked, now](TrackRecord& record) { return SetLiked(record, liked, now); });
 	}
 	if (storage != LikeStorage::Store) WriteTag(tracks, "LOVED", liked ? "1" : "");

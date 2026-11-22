@@ -339,12 +339,15 @@ struct CachedLayout {
 	float baseline = 0;
 };
 
+// The layout width of a text that is measured, not drawn into a rectangle.
+constexpr int kMeasuringWidth = -1;
+
 class LayoutCache {
 public:
 	struct Key {
 		std::wstring text;
 		IDWriteTextFormat* format;
-		int width;  // -1 when measuring
+		int width;  // or kMeasuringWidth
 		TextPainter::Align align;
 		bool ellipsis;
 		bool operator==(const Key& other) const {
@@ -428,8 +431,6 @@ struct TextPainter::DirectWrite {
 		auto& factories = Factories::Get();
 		CComPtr<IDWriteFont> font;
 		if (FAILED(factories.gdiInterop->CreateFontFromLOGFONT(&logFont, &font.p))) {
-			// A name that only GDI knows, such as "MS Shell Dlg", the font of dialogs, stands for another font. GDI says
-			// which one it picks, and DirectWrite knows that one.
 			LOGFONTW resolved = logFont;
 			if (!ResolveFaceName(resolved) || FAILED(factories.gdiInterop->CreateFontFromLOGFONT(&resolved, &font.p))) return made;
 		}
@@ -472,7 +473,7 @@ struct TextPainter::DirectWrite {
 
 		CachedLayout made;
 		// GDI-compatible metrics keep text widths whole pixels, as GDI measured them, so columns and rules line up as before.
-		const float maxWidth = width < 0 ? 100000.0f : static_cast<float>(width);
+		const float maxWidth = width == kMeasuringWidth ? 100000.0f : static_cast<float>(width);
 		if (FAILED(Factories::Get().dwrite->CreateGdiCompatibleTextLayout(text.data(), static_cast<UINT32>(text.size()), format.format,
 			maxWidth, 10000.0f, 1.0f, nullptr, FALSE, &made.layout.p))) return nullptr;
 		made.layout->SetTextAlignment(DirectWriteAlign(align));
@@ -536,12 +537,12 @@ struct TextPainter::DirectWrite {
 		return BitBlt(dc, box.left, box.top, box.Width(), box.Height(), memory, 0, 0, SRCCOPY) != FALSE;
 	}
 
-	// Returns -1 when the text cannot be measured here, so the caller measures with GDI instead.
-	int Width(CDCHandle dc, std::wstring_view text) {
+	// Nothing when the text cannot be measured here, so the caller measures with GDI instead.
+	std::optional<int> Width(CDCHandle dc, std::wstring_view text) {
 		const Format* format = FormatFor(dc);
-		if (!format) return -1;
-		const CachedLayout* line = LayoutFor(text, *format, -1, Align::Left, false);
-		if (!line) return -1;
+		if (!format) return std::nullopt;
+		const CachedLayout* line = LayoutFor(text, *format, kMeasuringWidth, Align::Left, false);
+		if (!line) return std::nullopt;
 		return static_cast<int>(std::ceil(line->metrics.widthIncludingTrailingWhitespace));
 	}
 };
@@ -563,8 +564,7 @@ void TextPainter::Draw(CDCHandle dc, std::wstring_view text, const CRect& rect, 
 
 int TextPainter::Width(CDCHandle dc, std::wstring_view text) {
 	if (DirectWrite* drawer = Drawer()) {
-		const int width = drawer->Width(dc, text);
-		if (width >= 0) return width;
+		if (const std::optional<int> width = drawer->Width(dc, text)) return *width;
 	}
 	return WidthWithGdi(dc, text);
 }

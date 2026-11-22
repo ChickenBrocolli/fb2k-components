@@ -7,6 +7,7 @@
 
 #include "playlist_view.h"
 #include "preferences_pages.h"
+#include "info_lines_popup.h"
 #include "track_menu.h"
 #include "ui_language.h"
 
@@ -34,10 +35,7 @@ public:
 		CHAIN_MSG_MAP(ThemedPlaylistView)
 	END_MSG_MAP()
 
-	// The saved settings of one panel. Version 1 holds the name of the active group preset.
-	// Version 2 adds the column layout. Version 3 adds whether the panel shows no groups ("None").
-	// Version 4 adds whether the columns fill the panel ("Auto-size columns").
-	// Version 5 adds where the cover and info columns sit, which the user can drag them to.
+	// The saved settings of one panel, one part added per version (ConfigVersion).
 	// A panel never configured has no data and keeps the defaults, so a new panel fits its columns to its width.
 	// A panel saved before version 4 keeps the widths its user set, so it starts with that off.
 	void set_configuration(ui_element_config::ptr config) override {
@@ -46,16 +44,16 @@ public:
 			::ui_element_config_parser parser(config);
 			t_uint32 version = 0;
 			parser >> version;
-			if (version < 1 || version > kConfigVersion) return;
-			if (version < 4) SetAutoSizeColumns(false);
+			if (version < kPresetNameVersion || version > kConfigVersion) return;
+			if (version < kAutoSizeVersion) SetAutoSizeColumns(false);
 			pfc::string8 presetName;
 			parser >> presetName;
 			SelectPresetByName(presetName);
-			if (version < 2) return;
+			if (version < kColumnsVersion) return;
 
 			ColumnLayout layout;
 			t_uint32 columnCount = 0;
-			parser >> layout.coverWidth >> layout.infoWidth >> columnCount;
+			parser >> layout.coverWidth.value >> layout.infoWidth.value >> columnCount;
 			for (t_uint32 index = 0; index < columnCount; ++index) {
 				pfc::string8 name;
 				float width = 0;
@@ -63,17 +61,17 @@ public:
 				layout.columns.push_back({ name.c_str(), width });
 			}
 			SetColumnLayout(layout);
-			if (version < 3) return;
+			if (version < kUngroupedVersion) return;
 
 			t_uint8 ungrouped = 0;
 			parser >> ungrouped;
 			if (ungrouped != 0) SetUngrouped();
-			if (version < 4) return;
+			if (version < kAutoSizeVersion) return;
 
 			t_uint8 autoSize = 0;
 			parser >> autoSize;
 			SetAutoSizeColumns(autoSize != 0);
-			if (version < 5) return;
+			if (version < kPlacesVersion) return;
 
 			t_uint32 coverPlace = 0, infoPlace = 1;
 			parser >> coverPlace >> infoPlace;
@@ -84,15 +82,13 @@ public:
 		}
 	}
 
-	// write_string is spelled out because "builder << const char*" picks the bool overload
-	// and stores one byte in place of the text.
 	// Whether the configuration was saved by a panel, rather than being a new panel's empty one.
 	static bool WasSavedBefore(ui_element_config::ptr config) {
 		try {
 			::ui_element_config_parser parser(config);
 			t_uint32 version = 0;
 			parser >> version;
-			return version >= 1 && version <= kConfigVersion;
+			return version >= kPresetNameVersion && version <= kConfigVersion;
 		} catch (...) {
 			return false;
 		}
@@ -102,11 +98,13 @@ public:
 		const ColumnLayout layout = GetColumnLayout();
 		ui_element_config_builder builder;
 		builder << kConfigVersion;
+		// write_string is spelled out because "builder << const char*" picks the bool overload
+		// and stores one byte in place of the text.
 		builder.write_string(Presets()[ActivePreset()].name.c_str());
-		builder << layout.coverWidth << layout.infoWidth << static_cast<t_uint32>(layout.columns.size());
+		builder << layout.coverWidth.value << layout.infoWidth.value << static_cast<t_uint32>(layout.columns.size());
 		for (const ColumnLayout::Column& column : layout.columns) {
 			builder.write_string(column.name.c_str());
-			builder << column.width;
+			builder << column.width.value;
 		}
 		builder << static_cast<t_uint8>(IsUngrouped() ? 1 : 0);
 		builder << static_cast<t_uint8>(IsAutoSizeColumns() ? 1 : 0);
@@ -143,6 +141,7 @@ private:
 			CPoint clientPoint = screenPoint;
 			ScreenToClient(&clientPoint);
 			if (const std::optional<size_t> block = CoverBlockAt(clientPoint)) RunCoverMenu(screenPoint, *block);
+			else if (const std::optional<size_t> infoBlock = InfoBlockAt(clientPoint)) ShowInfoLinesPopup(*this, *infoBlock, screenPoint);
 			else RunTrackMenuAt(screenPoint);
 		} else {
 			SetMsgHandled(FALSE);
@@ -174,17 +173,32 @@ private:
 
 	// The menu of a cover. A right click elsewhere in the list shows the track menu.
 	void RunCoverMenu(CPoint screenPoint, size_t block) {
-		enum : UINT { kReloadCommand = 1, kReloadAllCommand, kOpenFolderCommand };
+		enum : UINT { kReloadCommand = 1, kReloadAllCommand, kOpenFolderCommand, kStubCommand };
+		const ViewSettings settings = LoadViewSettings();
 		CMenu menu;
 		menu.CreatePopupMenu();
 		menu.AppendMenu(MF_STRING, kReloadCommand, TrW("Reload album art").c_str());
 		// The key is shown beside the item, so the menu teaches it.
 		menu.AppendMenu(MF_STRING, kReloadAllCommand, TrW("Reload all album art\tF5").c_str());
 		menu.AppendMenu(MF_STRING, kOpenFolderCommand, TrW("Open containing folder").c_str());
+		// Only on a cover without album art, where it is wanted: a right click on the empty place (or on the stub image
+		// shown there) finds it, and the menu of every other cover stays short.
+		if (BlockHasNoCover(block)) {
+			menu.AppendMenu(MF_SEPARATOR);
+			menu.AppendMenu(MF_STRING | (settings.stubForMissingArt ? MF_CHECKED : 0), kStubCommand, TrW("Show foobar2000's stub image").c_str());
+		}
 		const UINT command = static_cast<UINT>(menu.TrackPopupMenu(TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, screenPoint.x, screenPoint.y, m_hWnd));
-		if (command == kReloadCommand) ReloadCover(block);
-		else if (command == kReloadAllCommand) ReloadAllCovers();
-		else if (command == kOpenFolderCommand) OpenCoverFolder(block);
+		if (command == kReloadCommand) {
+			ReloadCover(block);
+		} else if (command == kReloadAllCommand) {
+			ReloadAllCovers();
+		} else if (command == kOpenFolderCommand) {
+			OpenCoverFolder(block);
+		} else if (command == kStubCommand) {
+			ViewSettings changed = settings;
+			changed.stubForMissingArt = !changed.stubForMissingArt;
+			ApplyViewSettings(changed);
+		}
 	}
 
 	void RunHeaderMenu(CPoint screenPoint) {
@@ -318,7 +332,15 @@ private:
 		}
 	}
 
-	static constexpr t_uint32 kConfigVersion = 5;
+	// The versions of the saved settings, each named after the part it added. The numbers are saved.
+	enum ConfigVersion : t_uint32 {
+		kPresetNameVersion = 1,  // the name of the active group preset
+		kColumnsVersion = 2,  // the column layout
+		kUngroupedVersion = 3,  // whether the panel shows no groups ("None")
+		kAutoSizeVersion = 4,  // whether the columns fill the panel ("Auto-size columns")
+		kPlacesVersion = 5,  // where the cover and info columns sit
+	};
+	static constexpr t_uint32 kConfigVersion = kPlacesVersion;
 };
 
 class GroupViewElement : public ui_element_impl<GroupViewWindow> {};

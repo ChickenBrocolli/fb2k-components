@@ -5,7 +5,7 @@
 
 // The order that reverses the selected tracks among the places they hold, for the Reverse item of the track menu.
 // Tracks that are not selected stay where they are. Position i receives the track that was at order[i],
-// as playlist_manager::reorder_items takes it.
+// as playlist_manager::activeplaylist_reorder_items takes it.
 inline std::vector<size_t> ReversedSelectionOrder(const std::vector<bool>& selected) {
 	std::vector<size_t> order(selected.size());
 	std::vector<size_t> places;

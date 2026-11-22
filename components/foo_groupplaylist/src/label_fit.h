@@ -18,7 +18,7 @@ struct FitBox {
 };
 
 struct FitLabel {
-	size_t index;     // into the boxes
+	size_t box;
 	int neededWidth;  // the width the translated text needs, check box square included
 };
 
@@ -70,18 +70,18 @@ inline FitResult FitLabels(const std::vector<FitBox>& boxes, std::vector<FitLabe
 	result.leftShift.assign(boxes.size(), 0);
 	result.width.resize(boxes.size());
 	for (size_t i = 0; i < boxes.size(); ++i) result.width[i] = boxes[i].Width();
-	std::sort(labels.begin(), labels.end(), [&](const FitLabel& a, const FitLabel& b) { return boxes[a.index].left < boxes[b.index].left; });
+	std::sort(labels.begin(), labels.end(), [&](const FitLabel& a, const FitLabel& b) { return boxes[a.box].left < boxes[b.box].left; });
 
 	std::vector<std::vector<size_t>> followers(labels.size());
 	std::vector<int> shrink(labels.size());
 	for (size_t l = 0; l < labels.size(); ++l) {
-		followers[l] = RowFollowers(boxes, labels[l].index, maxGap);
-		shrink[l] = (std::max)(0, boxes[labels[l].index].Width() - labels[l].neededWidth);
+		followers[l] = RowFollowers(boxes, labels[l].box, maxGap);
+		shrink[l] = (std::max)(0, boxes[labels[l].box].Width() - labels[l].neededWidth);
 	}
 	const auto sameColumn = [&](size_t a, size_t b) {
 		if (followers[a].empty() || followers[b].empty()) return false;
 		const auto withinAPixel = [](int x, int y) { return x - y <= 1 && y - x <= 1; };
-		return withinAPixel(boxes[labels[a].index].left, boxes[labels[b].index].left) &&
+		return withinAPixel(boxes[labels[a].box].left, boxes[labels[b].box].left) &&
 			withinAPixel(boxes[followers[a].front()].left, boxes[followers[b].front()].left);
 	};
 	std::vector<int> columnShrink = shrink;
@@ -94,7 +94,7 @@ inline FitResult FitLabels(const std::vector<FitBox>& boxes, std::vector<FitLabe
 	for (size_t l = 0; l < labels.size(); ++l) {
 		// A label with nothing after it on its row has no gap to close.
 		if (followers[l].empty() || columnShrink[l] <= 0) continue;
-		result.width[labels[l].index] = boxes[labels[l].index].Width() - columnShrink[l];
+		result.width[labels[l].box] = boxes[labels[l].box].Width() - columnShrink[l];
 		for (const size_t follower : followers[l]) result.leftShift[follower] += columnShrink[l];
 	}
 	return result;

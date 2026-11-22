@@ -35,7 +35,7 @@ inline constexpr double kInertiaTauMs = InertiaParams{}.tauMs;
 
 struct Momentum {
 	double position = 0;
-	double velocity = 0;  // pixels per millisecond
+	double velocityPxPerMs = 0;
 	double lastMs = 0;
 	double lastPushMs = -1e9;
 	int streak = 0;  // quick pushes in a row
@@ -56,33 +56,40 @@ inline double AccelerationFactor(int streak, const InertiaParams& params = {}) {
 }
 
 inline void Push(Momentum& momentum, int delta, double nowMs, const InertiaParams& params = {}) {
-	if (momentum.velocity * delta < 0) {
+	if (momentum.velocityPxPerMs * delta < 0) {
 		// A turn the other way stops the coasting first, and its notch is a first notch again.
-		momentum.velocity = 0;
+		momentum.velocityPxPerMs = 0;
 		momentum.lastPushMs = -1e9;
 	}
 	if (params.tauMs != momentum.tauMs) {
 		// The friction was changed on the page: the coasting that is left keeps its distance.
-		momentum.velocity *= momentum.tauMs / params.tauMs;
+		momentum.velocityPxPerMs *= momentum.tauMs / params.tauMs;
 		momentum.tauMs = params.tauMs;
 	}
 	momentum.streak = nowMs - momentum.lastPushMs < params.quickGapMs ? momentum.streak + 1 : 0;
 	momentum.lastPushMs = nowMs;
-	momentum.velocity += delta * params.distanceScale * AccelerationFactor(momentum.streak, params) / momentum.tauMs;
+	momentum.velocityPxPerMs += delta * params.distanceScale * AccelerationFactor(momentum.streak, params) / momentum.tauMs;
 }
 
 // Moves the view to nowMs. The distance is the exact integral of the slowing speed, so the frame rate does not matter.
 inline void Advance(Momentum& momentum, double nowMs) {
 	const double elapsed = (std::max)(0.0, nowMs - momentum.lastMs);
 	const double decay = std::exp(-elapsed / momentum.tauMs);
-	momentum.position += momentum.velocity * momentum.tauMs * (1.0 - decay);
-	momentum.velocity *= decay;
+	momentum.position += momentum.velocityPxPerMs * momentum.tauMs * (1.0 - decay);
+	momentum.velocityPxPerMs *= decay;
 	momentum.lastMs = nowMs;
 }
 
 // Done when less than half a pixel of coasting is left.
 inline bool MomentumDone(const Momentum& momentum) {
-	return std::abs(momentum.velocity) * momentum.tauMs < 0.5;
+	return std::abs(momentum.velocityPxPerMs) * momentum.tauMs < 0.5;
+}
+
+// How many display refreshes the timing thread waits out before the next frame: only the whole refreshes that painting
+// takes longer than. (ui_helpers skips already at half a refresh; on a laptop whose frames take 9 ms at 60 Hz that
+// halved the frame rate.)
+inline int RefreshesToSkip(double averagePaintMs, double shortestRefreshMs) {
+	return (std::max)(0, static_cast<int>(averagePaintMs / shortestRefreshMs));
 }
 
 // What the last wheel messages were, to tell a mouse wheel from a precision touchpad.

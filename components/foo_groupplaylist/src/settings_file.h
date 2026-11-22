@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -46,9 +47,12 @@ private:
 	std::string m_text;
 };
 
+// Notepad may start a saved file with it.
+inline constexpr std::string_view kUtf8Bom = "\xEF\xBB\xBF";
+
 // The entries of a settings file in their order, or nothing when the text is not one (no "format" line naming it).
 inline std::optional<SettingsEntries> ParseSettingsText(std::string text) {
-	if (text.rfind("\xEF\xBB\xBF", 0) == 0) text.erase(0, 3);  // a byte order mark from Notepad
+	if (text.starts_with(kUtf8Bom)) text.erase(0, kUtf8Bom.size());
 	SettingsEntries entries;
 	size_t start = 0;
 	while (start < text.size()) {

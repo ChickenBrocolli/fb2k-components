@@ -22,7 +22,7 @@ struct ScrollPreset {
 	bool operator==(const ScrollPreset&) const = default;
 };
 
-// The English names are the keys (ui_text.h has the Korean ones). The first is the default.
+// The English names are the keys (ui_text.h has the Korean ones). Default scrolls as a new installation does.
 // The glide time acts as the weight of a sledge that a notch pushes: a light one jumps to speed and stops at once,
 // a heavy one gets going slowly and keeps rolling.
 //   Default  the feel the user picked from the test styles
@@ -30,7 +30,7 @@ struct ScrollPreset {
 //   Heavy    nearly three times the glide, a slow notch moves only three quarters, quick notches pile up to five times
 inline std::vector<ScrollPreset> BuiltInScrollPresets() {
 	return {
-		{ "Default", { 90.0, 1.0, 120.0, 0.4, 3.0 } }, // ui-text
+		{ "Default", smooth_scroll::InertiaParams{} }, // ui-text
 		{ "Light", { 45.0, 1.0, 80.0, 0.15, 1.5 } }, // ui-text
 		{ "Heavy", { 250.0, 0.75, 180.0, 0.6, 5.0 } }, // ui-text
 	};
@@ -89,6 +89,12 @@ inline std::optional<size_t> FindScrollPreset(const std::vector<ScrollPreset>& p
 		if (presets[index].name == name) return index;
 	}
 	return std::nullopt;
+}
+
+// The built-in preset a new installation and Reset start from.
+inline ScrollPreset DefaultScrollPreset() {
+	const std::vector<ScrollPreset> builtIn = BuiltInScrollPresets();
+	return builtIn[FindScrollPreset(builtIn, kDefaultScrollPresetName).value_or(0)];
 }
 
 inline bool IsBuiltInScrollPreset(const std::string& name) {

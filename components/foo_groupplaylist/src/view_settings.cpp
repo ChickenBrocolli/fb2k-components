@@ -47,7 +47,7 @@ std::vector<StoredSetting> MakeStoredSettings() {
 	std::vector<StoredSetting> stored;
 	VisitViewSettings([&](const auto& field) {
 		using F = std::decay_t<decltype(field)>;
-		const GUID guid = SettingGuid(field.store);
+		const GUID guid = SettingGuid(field.guidIndex);
 		const auto member = field.member;
 		if constexpr (std::is_same_v<F, BoolField>) {
 			auto cfg = std::make_shared<cfg_bool>(guid, kDefaults.*member);
@@ -65,8 +65,8 @@ std::vector<StoredSetting> MakeStoredSettings() {
 			auto cfg = std::make_shared<cfg_struct_t<LOGFONTW>>(guid, kDefaults.*member);
 			stored.push_back({ [cfg, member](ViewSettings& v) { v.*member = cfg->get(); }, [cfg, member](const ViewSettings& v) { *cfg = v.*member; } });
 		} else if constexpr (std::is_same_v<F, OwnColorField>) {
-			// -1 until saved once: UsesOwnTextColor then keeps a colour picked before 0.9.2.
-			auto cfg = std::make_shared<cfg_int>(guid, -1);
+			// Until saved once, UsesOwnTextColor keeps a colour picked before 0.9.2.
+			auto cfg = std::make_shared<cfg_int>(guid, kNeverSaved);
 			const auto color = field.color;
 			stored.push_back({ [=](ViewSettings& v) { v.*member = UsesOwnTextColor(static_cast<int>(cfg->get()), v.*color); },
 				[=](const ViewSettings& v) { *cfg = v.*member ? 1 : 0; } });

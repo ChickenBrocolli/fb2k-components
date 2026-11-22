@@ -5,14 +5,14 @@ namespace {
 
 TrackRecord Sample() {
 	TrackRecord record;
-	record.rating = 4;
-	record.playCount = 12;
-	record.firstPlayed = 133000000000000000ull;
-	record.lastPlayed = 134000000000000000ull;
-	record.added = 132000000000000000ull;
+	record.legacy.rating = 4;
+	record.legacy.playCount = 12;
+	record.legacy.firstPlayed = 133000000000000000ull;
+	record.legacy.lastPlayed = 134000000000000000ull;
+	record.legacy.added = 132000000000000000ull;
 	record.liked = 1;
 	record.likedAt = 134500000000000000ull;
-	record.ratingSet = true;
+	record.legacy.ratingSet = true;
 	record.likeSet = true;
 	return record;
 }
@@ -53,7 +53,7 @@ void AVersionOneRecordReadsWithoutALike() {
 	TrackRecord old = Sample();
 	old.liked = 0;
 	old.likedAt = 0;
-	old.ratingSet = old.likeSet = false;
+	old.legacy.ratingSet = old.likeSet = false;
 	auto bytes = SerializeTrackRecord(old);
 	bytes[0] = 1;
 	bytes.resize(bytes.size() - 4 - 8 - 4);
@@ -66,7 +66,7 @@ void AVersionOneRecordReadsWithoutALike() {
 void AVersionTwoRecordReadsWithoutALikeTime() {
 	TrackRecord old = Sample();
 	old.likedAt = 0;
-	old.ratingSet = old.likeSet = false;
+	old.legacy.ratingSet = old.likeSet = false;
 	auto bytes = SerializeTrackRecord(old);
 	bytes[0] = 2;
 	bytes.resize(bytes.size() - 8 - 4);
@@ -78,7 +78,7 @@ void AVersionTwoRecordReadsWithoutALikeTime() {
 // A record saved before version 4 decides the like only when it has one.
 void AnOldRecordDecidesOnlyWhatItHas() {
 	TrackRecord old = Sample();
-	old.ratingSet = old.likeSet = false;
+	old.legacy.ratingSet = old.likeSet = false;
 	auto bytes = SerializeTrackRecord(old);
 	bytes[0] = 3;
 	bytes.resize(bytes.size() - 4);
@@ -111,9 +111,9 @@ void LikingKeepsTheTimeOfTheFirstLike() {
 
 void ARatingAboveFiveReadsAsFive() {
 	TrackRecord record = Sample();
-	record.rating = 9;
+	record.legacy.rating = 9;
 	const auto bytes = SerializeTrackRecord(record);
-	CHECK(ParseTrackRecord(bytes.data(), bytes.size())->rating == 5);
+	CHECK(ParseTrackRecord(bytes.data(), bytes.size())->legacy.rating == 5);
 }
 
 } // namespace

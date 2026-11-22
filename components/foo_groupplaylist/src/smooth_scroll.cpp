@@ -121,9 +121,7 @@ void SmoothScrollTimingThread::Start(std::function<void()> onTick) {
 					if (!wasActive) paintTimes = FrameTimeAverager();
 					wasActive = true;
 					if (!needToSleep) {
-						// When painting takes longer than a refresh, the refreshes it covers are skipped. (ui_helpers skips
-						// already at half a refresh; on a laptop whose frames take 9 ms at 60 Hz that halved the frame rate.)
-						const int skip = (std::max)(0, static_cast<int>(paintTimes.Average() / refreshTimes.Minimum()));
+						const int skip = smooth_scroll::RefreshesToSkip(paintTimes.Average(), refreshTimes.Minimum());
 						for (int i = 0; i < skip && !stop.stop_requested(); ++i) waitForRefresh();
 					}
 					const double frameStart = NowMs();

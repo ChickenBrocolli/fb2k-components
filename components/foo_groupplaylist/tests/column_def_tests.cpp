@@ -19,10 +19,10 @@ void AColumnListSurvivesSerializeAndParse() {
 	CHECK(parsed[0].name == "Gain");
 	CHECK(parsed[0].pattern == "%replaygain_track_gain%");
 	CHECK(parsed[0].alignment == ColumnAlignment::Right);
-	CHECK(parsed[0].width == 75);
+	CHECK(parsed[0].width.value == 75);
 	CHECK(parsed[1].pattern == "$if(%mood%,%mood%,none)");
 	CHECK(parsed[1].alignment == ColumnAlignment::Center);
-	CHECK(parsed[1].width == 120.5f);
+	CHECK(parsed[1].width.value == 120.5f);
 	CHECK(parsed[2].name == "Plain");
 	CHECK(parsed[2].pattern.empty());
 	CHECK(parsed[2].alignment == ColumnAlignment::Left);
@@ -30,19 +30,19 @@ void AColumnListSurvivesSerializeAndParse() {
 
 void AColumnLayoutSurvivesSerializeAndParse() {
 	ColumnLayout layout;
-	layout.coverWidth = 150.5f;
-	layout.infoWidth = 0;
+	layout.coverWidth = { 150.5f };
+	layout.infoWidth = { 0 };
 	layout.columns = { { "Track", 50 }, { "Title / track artist", 300.25f }, { "Duration", 70 } };
 	layout.places = { 2, 0 };
 	const std::optional<ColumnLayout> parsed = ParseColumnLayout(SerializeColumnLayout(layout));
 	CHECK(parsed.has_value());
 	if (!parsed) return;
-	CHECK(parsed->coverWidth == 150.5f);
+	CHECK(parsed->coverWidth.value == 150.5f);
 	// A zero width is not a width: the default stays.
 	CHECK(parsed->infoWidth == ColumnLayout{}.infoWidth);
 	CHECK(parsed->columns.size() == 3);
 	CHECK(parsed->columns[1].name == "Title / track artist");
-	CHECK(parsed->columns[1].width == 300.25f);
+	CHECK(parsed->columns[1].width.value == 300.25f);
 	CHECK(parsed->places.cover == 2 && parsed->places.info == 0);
 	CHECK(!ParseColumnLayout("").has_value());
 	CHECK(!ParseColumnLayout("Track\t50\n").has_value());
@@ -52,9 +52,9 @@ void AnUntouchedLayoutComparesEqual() {
 	ColumnLayout a;
 	a.columns = { { "Track", 50 }, { "Title", 300 } };
 	ColumnLayout b = a;
-	b.columns[1].width = 300.3f;
+	b.columns[1].width = { 300.3f };
 	CHECK(SameColumnLayout(a, b));
-	b.columns[1].width = 301;
+	b.columns[1].width = { 301 };
 	CHECK(!SameColumnLayout(a, b));
 	b = a;
 	std::swap(b.columns[0], b.columns[1]);
@@ -82,7 +82,7 @@ void AMalformedLineIsSkippedAndTheRestIsKept() {
 	if (parsed.size() != 1) return;
 	CHECK(parsed[0].name == "Good");
 	CHECK(parsed[0].alignment == ColumnAlignment::Right);
-	CHECK(parsed[0].width == 60);
+	CHECK(parsed[0].width.value == 60);
 }
 
 void ABadWidthOrAlignmentFallsBackToADefault() {
@@ -90,7 +90,7 @@ void ABadWidthOrAlignmentFallsBackToADefault() {
 	CHECK(parsed.size() == 1);
 	if (parsed.size() != 1) return;
 	CHECK(parsed[0].alignment == ColumnAlignment::Left);
-	CHECK(parsed[0].width == 100);
+	CHECK(parsed[0].width.value == 100);
 }
 
 void TheShowInMenuFlagSurvivesARoundTrip() {
@@ -205,7 +205,7 @@ void ACustomColumnNamedLikeABuiltInIsRenamedAndKept() {
 	CHECK(renamed[1].name == "Bitrate (custom)");
 	CHECK(renamed[1].pattern == "%bitrate%k");
 	CHECK(renamed[1].alignment == ColumnAlignment::Center);
-	CHECK(renamed[1].width == 60);
+	CHECK(renamed[1].width.value == 60);
 }
 
 void ARenameNeverLandsOnATakenName() {
@@ -243,9 +243,9 @@ const ColumnDef* Named(const std::vector<ColumnDef>& defs, const std::string& na
 }
 
 void AnEditedBuiltInColumnSurvivesSavingAndLoading() {
-	ColumnDef edit = { "Title", "%title% [%subtitle%]", ColumnAlignment::Center, 0 };
-	edit.title = "Song";
-	const std::vector<ColumnDef> loaded = ParseBuiltInEdits(SerializeBuiltInEdits({ edit }));
+	const BuiltInColumnEdit edit = { "Title", "Song", "%title% [%subtitle%]", ColumnAlignment::Center };
+	const std::vector<BuiltInColumnEdit> loaded = ParseBuiltInEdits(SerializeBuiltInEdits({ edit }));
+	CHECK(SerializeBuiltInEdits({ edit }) == "Title\tSong\t%title% [%subtitle%]\t1\n");
 	CHECK(loaded.size() == 1);
 	CHECK(!loaded.empty() && loaded[0].name == "Title" && loaded[0].title == "Song");
 	CHECK(!loaded.empty() && loaded[0].pattern == "%title% [%subtitle%]" && loaded[0].alignment == ColumnAlignment::Center);
@@ -259,16 +259,15 @@ void OnlyChangedBuiltInColumnsAreKept() {
 	for (ColumnDef& def : defs) {
 		if (def.name == "Artist") def.alignment = ColumnAlignment::Right;
 	}
-	const std::vector<ColumnDef> edits = BuiltInEditsFrom(originals, defs);
+	const std::vector<BuiltInColumnEdit> edits = BuiltInEditsFrom(originals, defs);
 	CHECK(edits.size() == 1 && edits[0].name == "Artist");
 }
 
 void EditsReachTheirColumnOnly() {
-	ColumnDef title = { "Title", "%title% [%subtitle%]", ColumnAlignment::Left, 0 };
-	title.title = "Song";
-	ColumnDef rating = { "Rating", "%rating%", ColumnAlignment::Right, 0 };
-	ColumnDef duration = { "Duration", "%length_seconds%", ColumnAlignment::Left, 0 };
-	ColumnDef unknown = { "No such column", "%x%", ColumnAlignment::Left, 0 };
+	const BuiltInColumnEdit title = { "Title", "Song", "%title% [%subtitle%]", ColumnAlignment::Left };
+	const BuiltInColumnEdit rating = { "Rating", "", "%rating%", ColumnAlignment::Right };
+	const BuiltInColumnEdit duration = { "Duration", "", "%length_seconds%", ColumnAlignment::Left };
+	const BuiltInColumnEdit unknown = { "No such column", "", "%x%", ColumnAlignment::Left };
 	const std::vector<ColumnDef> defs = ApplyBuiltInEdits(BuiltInColumnDefs(), { title, rating, duration, unknown });
 	CHECK(defs.size() == BuiltInColumnDefs().size());
 	const ColumnDef* shown = Named(defs, "Title");

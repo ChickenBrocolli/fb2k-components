@@ -15,6 +15,13 @@ void ACoverSizeOutsideTheRangeIsPulledIn() {
 	CHECK(ClampCoverSize(5000) == kMaxCoverSize);
 }
 
+void ACoverColumnWidthAsksForTheCoverItHolds() {
+	CHECK(CoverSizeForColumnWidth(CoverColumnWidth(kDefaultCoverSize)) == kDefaultCoverSize);
+	CHECK(CoverSizeForColumnWidth(CoverColumnWidth(kMinCoverSize) - 1) == kMinCoverSize);
+	CHECK(CoverSizeForColumnWidth(CoverColumnWidth(kMaxCoverSize) + 1) == kMaxCoverSize);
+	CHECK(CoverSizeForColumnWidth(0) == kMinCoverSize);
+}
+
 void ARowPaddingOutsideTheRangeIsPulledIn() {
 	CHECK(ClampRowPadding(kDefaultRowPadding) == kDefaultRowPadding);
 	CHECK(ClampRowPadding(-1) == kMinRowPadding);
@@ -86,6 +93,7 @@ void RunViewSettingsTests() {
 	ATrackSummaryTurnedOffShowsNowhere();
 	ACoverSizeInsideTheRangeIsKept();
 	ACoverSizeOutsideTheRangeIsPulledIn();
+	ACoverColumnWidthAsksForTheCoverItHolds();
 	ARowPaddingOutsideTheRangeIsPulledIn();
 	TheDefaultsLieInsideTheirRanges();
 	InertiaNumbersArePulledIntoTheirRanges();

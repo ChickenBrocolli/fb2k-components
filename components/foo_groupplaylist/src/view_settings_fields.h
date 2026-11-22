@@ -20,21 +20,22 @@
 #include "tab_lines.h"
 #include "view_settings.h"
 
-// The preferences page a setting is on. Each page compares and saves only its own part.
-enum class SettingsPage { Main, Scrolling, Ratings };
+// The preferences page a setting is on. Each page compares and saves only its own part. PanelMenu is on no page: it
+// is set in a panel's menu only, so no page's Reset or Apply changes it.
+enum class SettingsPage { Main, Scrolling, Ratings, PanelMenu };
 
 namespace view_settings_fields {
 
 struct BoolField {
 	const char* key;
-	uint8_t store;  // SettingGuid number
+	uint8_t guidIndex;  // SettingGuid(guidIndex) is its configuration entry
 	SettingsPage page;
 	bool ViewSettings::* member;
 };
 
 struct IntField {
 	const char* key;
-	uint8_t store;
+	uint8_t guidIndex;
 	SettingsPage page;
 	int ViewSettings::* member;
 	int minimum, maximum;
@@ -42,14 +43,14 @@ struct IntField {
 
 struct ColorField {
 	const char* key;
-	uint8_t store;
+	uint8_t guidIndex;
 	SettingsPage page;
 	COLORREF ViewSettings::* member;
 };
 
 struct FontField {
 	const char* key;
-	uint8_t store;
+	uint8_t guidIndex;
 	SettingsPage page;
 	LOGFONTW ViewSettings::* member;
 };
@@ -58,18 +59,18 @@ struct FontField {
 template <typename E>
 struct EnumField {
 	const char* key;
-	uint8_t store;
+	uint8_t guidIndex;
 	SettingsPage page;
 	E ViewSettings::* member;
 	int count;
 	E (*from)(int);
 };
 
-// Whether a text colour is the user's own. Saved as -1 until saved once, and a settings file from before 0.9.2
+// Whether a text colour is the user's own. kNeverSaved until saved once, and a settings file from before 0.9.2
 // has the colour but not this; then UsesOwnTextColor decides from the colour, which comes before it in the list.
 struct OwnColorField {
 	const char* key;
-	uint8_t store;
+	uint8_t guidIndex;
 	SettingsPage page;
 	bool ViewSettings::* member;
 	COLORREF ViewSettings::* color;
@@ -97,11 +98,13 @@ void VisitViewSettings(Visit&& visit) {
 	visit(OwnColorField{ "customLabelColor", 30, Page::Main, &ViewSettings::customLabelColor, &ViewSettings::labelColor, "labelColor" });
 	visit(IntField{ "rowPadding", 8, Page::Main, &ViewSettings::rowPadding, kMinRowPadding, kMaxRowPadding });
 	visit(IntField{ "coverSize", 9, Page::Main, &ViewSettings::coverSize, kMinCoverSize, kMaxCoverSize });
+	visit(BoolField{ "stubForMissingArt", 39, Page::PanelMenu, &ViewSettings::stubForMissingArt });
 	visit(BoolField{ "presetPerPlaylist", 10, Page::Main, &ViewSettings::presetPerPlaylist });
 	visit(BoolField{ "scrollPerPlaylist", 13, Page::Main, &ViewSettings::scrollPerPlaylist });
 	visit(BoolField{ "columnsPerPlaylist", 37, Page::Main, &ViewSettings::columnsPerPlaylist });
 	visit(BoolField{ "sortOnHeaderClick", 12, Page::Main, &ViewSettings::sortOnHeaderClick });
 	visit(BoolField{ "dragColumns", 25, Page::Main, &ViewSettings::dragColumns });
+	visit(BoolField{ "animateColumnMoves", 38, Page::Main, &ViewSettings::animateColumnMoves });
 	visit(BoolField{ "showColumnHeaders", 36, Page::Main, &ViewSettings::showColumnHeaders });
 	visit(BoolField{ "dimBrackets", 11, Page::Main, &ViewSettings::dimBrackets });
 	visit(BoolField{ "showTrackSummary", 26, Page::Main, &ViewSettings::showTrackSummary });
@@ -126,6 +129,13 @@ bool SameField(const ViewSettings& a, const ViewSettings& b, const F& field) {
 }
 
 } // namespace view_settings_fields
+
+// Whether every setting is the same in both.
+inline bool SameViewSettings(const ViewSettings& a, const ViewSettings& b) {
+	bool same = true;
+	VisitViewSettings([&](const auto& field) { same = same && view_settings_fields::SameField(a, b, field); });
+	return same;
+}
 
 // Whether the settings of one page are the same in both.
 inline bool SameSettings(const ViewSettings& a, const ViewSettings& b, SettingsPage page) {
@@ -156,6 +166,21 @@ inline bool TakeChangedSettings(const ViewSettings& saved, const ViewSettings& l
 	return taken;
 }
 
+// The view settings one preferences page edits. Only that page's settings count: the others are what was saved when
+// the page took its copy, and comparing or copying leaves them out.
+template <SettingsPage Page>
+struct PageViewSettings {
+	ViewSettings fields;
+
+	bool operator==(const PageViewSettings& other) const { return SameSettings(fields, other.fields, Page); }
+	// Puts this page's settings into to.
+	void CopyTo(ViewSettings& to) const { CopySettings(fields, to, Page); }
+	// Takes this page's settings from from.
+	void TakeFrom(const ViewSettings& from) { CopySettings(from, fields, Page); }
+	// TakeChangedSettings for this page.
+	bool TakeChanged(const ViewSettings& saved, const ViewSettings& lastSaved) { return TakeChangedSettings(saved, lastSaved, fields, Page); }
+};
+
 namespace view_settings_fields {
 
 inline std::string Utf8(const wchar_t* text) {
@@ -178,9 +203,7 @@ inline std::wstring Wide(const std::string& text) {
 
 // A font as face, height at 96 DPI, weight and italic, separated by tabs.
 inline std::string FontText(const LOGFONTW& font) {
-	std::string line = JoinFieldLine({ Utf8(font.lfFaceName), std::to_string(font.lfHeight), std::to_string(font.lfWeight), font.lfItalic ? "1" : "0" });
-	line.pop_back();  // the line break
-	return line;
+	return JoinFields({ Utf8(font.lfFaceName), std::to_string(font.lfHeight), std::to_string(font.lfWeight), font.lfItalic ? "1" : "0" });
 }
 
 // The font of the text over base, or nothing when the text is not a font.
@@ -224,7 +247,7 @@ inline void ReadViewSettings(const SettingsEntries& entries, ViewSettings& view)
 		const std::optional<std::string> text = SettingValue(entries, field.key);
 		if constexpr (std::is_same_v<F, OwnColorField>) {
 			if (!text) {
-				if (SettingValue(entries, field.colorKey)) view.*field.member = UsesOwnTextColor(-1, view.*field.color);
+				if (SettingValue(entries, field.colorKey)) view.*field.member = UsesOwnTextColor(kNeverSaved, view.*field.color);
 				return;
 			}
 		}

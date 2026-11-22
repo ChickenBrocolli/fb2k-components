@@ -7,8 +7,8 @@ std::vector<ColumnDef> LoadCustomColumnDefs();
 void SaveCustomColumnDefs(const std::vector<ColumnDef>& defs);
 
 // What the user changed in built-in columns (column_def.h, SerializeBuiltInEdits). Only changed columns are kept.
-std::vector<ColumnDef> LoadBuiltInColumnEdits();
-void SaveBuiltInColumnEdits(const std::vector<ColumnDef>& edits);
+std::vector<BuiltInColumnEdit> LoadBuiltInColumnEdits();
+void SaveBuiltInColumnEdits(const std::vector<BuiltInColumnEdit>& edits);
 
 // The built-in columns with the user's changes, and the named ones left out of the Columns menu.
 std::vector<ColumnDef> SavedBuiltInColumnDefs();

@@ -20,34 +20,44 @@
 namespace {
 
 constexpr int kSettingCount = static_cast<int>(std::size(kInertiaSettings));
-static_assert(IDC_SCROLL_SLIDER_0 + kSettingCount - 1 == IDC_SCROLL_SLIDER_4);
-static_assert(IDC_SCROLL_VALUE_0 + kSettingCount - 1 == IDC_SCROLL_VALUE_4);
+
+// One slider and one number box per setting, in the order of kInertiaSettings.
+constexpr int kSliderIds[] = { IDC_SCROLL_SLIDER_0, IDC_SCROLL_SLIDER_1, IDC_SCROLL_SLIDER_2, IDC_SCROLL_SLIDER_3, IDC_SCROLL_SLIDER_4 };
+constexpr int kValueIds[] = { IDC_SCROLL_VALUE_0, IDC_SCROLL_VALUE_1, IDC_SCROLL_VALUE_2, IDC_SCROLL_VALUE_3, IDC_SCROLL_VALUE_4 };
+static_assert(std::size(kSliderIds) == static_cast<size_t>(kSettingCount) && std::size(kValueIds) == static_cast<size_t>(kSettingCount));
+
+// The setting a control belongs to, or -1 for another control.
+int SettingOfControl(const int (&ids)[kSettingCount], int id) {
+	for (int index = 0; index < kSettingCount; ++index) {
+		if (ids[index] == id) return index;
+	}
+	return -1;
+}
 
 // Everything the page edits.
 struct ScrollValues {
-	ViewSettings view;  // only its SettingsPage::Scrolling part counts
+	PageViewSettings<SettingsPage::Scrolling> view;
 	smooth_scroll::InertiaParams params;
 	std::string presetName;
 	std::vector<ScrollPreset> userPresets;
 
 	bool operator==(const ScrollValues& other) const {
-		return SameSettings(view, other.view, SettingsPage::Scrolling) && params == other.params && presetName == other.presetName &&
-			userPresets == other.userPresets;
+		return view == other.view && params == other.params && presetName == other.presetName && userPresets == other.userPresets;
 	}
 };
 
 ScrollValues SavedScrollValues() {
-	return { LoadViewSettings(), LoadInertiaParams(), LoadScrollPresetName(), LoadUserScrollPresets() };
+	return { { LoadViewSettings() }, LoadInertiaParams(), LoadScrollPresetName(), LoadUserScrollPresets() };
 }
 
 // The view settings with the page's part replaced.
 ViewSettings WithScrollValues(ViewSettings view, const ScrollValues& values) {
-	CopySettings(values.view, view, SettingsPage::Scrolling);
+	values.view.CopyTo(view);
 	return view;
 }
 
 bool SameViewPart(const ScrollValues& a, const ScrollValues& b) {
-	return SameSettings(a.view, b.view, SettingsPage::Scrolling);
+	return a.view == b.view;
 }
 
 // A preset name as shown: built-in presets in the current language, the user's as typed.
@@ -92,7 +102,6 @@ public:
 	~ScrollingDialog() { if (s_open == this) s_open = nullptr; }
 
 	// The page while it exists, so a switch from the panel header menu or an import shows on it.
-	// foobar2000 keeps a page that was shown until Preferences closes.
 	static ScrollingDialog* s_open;
 
 	// The page's part of the panels' preview while it is shown (ShowPreferencesPreview).
@@ -116,9 +125,10 @@ public:
 
 	// The page's defaults. The user's presets stay.
 	void reset() override {
-		CopySettings(DefaultViewSettings(), m_values.view, SettingsPage::Scrolling);
-		m_values.params = BuiltInScrollPresets()[0].params;
-		m_values.presetName = kDefaultScrollPresetName;
+		m_values.view.TakeFrom(DefaultViewSettings());
+		const ScrollPreset preset = DefaultScrollPreset();
+		m_values.params = preset.params;
+		m_values.presetName = preset.name;
 		ShowValues();
 		Changed();
 	}
@@ -137,7 +147,7 @@ public:
 	void TakeMenuToggles() {
 		if (!m_hWnd) return;
 		const ScrollValues saved = SavedScrollValues();
-		bool taken = TakeChangedSettings(saved.view, m_lastSaved.view, m_values.view, SettingsPage::Scrolling);
+		bool taken = m_values.view.TakeChanged(saved.view.fields, m_lastSaved.view.fields);
 		if (!(saved.params == m_lastSaved.params) || saved.presetName != m_lastSaved.presetName) {
 			m_values.params = saved.params;
 			m_values.presetName = saved.presetName;
@@ -147,7 +157,7 @@ public:
 		// The menu may have set the scroll numbers. The panels scroll with the page's own again, as before the menu
 		// was used, and ApplyViewSettings shows the page's smooth scrolling and pinning after this.
 		SetLiveInertiaParams(m_values.params);
-		CopySettings(m_values.view, m_shown.view, SettingsPage::Scrolling);
+		m_shown.view.TakeFrom(m_values.view.fields);
 		if (!taken) return;
 		ShowValues();
 		m_callback->on_state_changed();
@@ -174,7 +184,7 @@ private:
 		m_texts.Translate(*this);
 		for (int i = 0; i < kSettingCount; ++i) {
 			const InertiaSetting& setting = kInertiaSettings[i];
-			CTrackBarCtrl slider(GetDlgItem(IDC_SCROLL_SLIDER_0 + i));
+			CTrackBarCtrl slider(GetDlgItem(kSliderIds[i]));
 			slider.SetRange(SliderPosition(setting, setting.minimum), SliderPosition(setting, setting.maximum));
 			slider.SetPageSize((std::max)(1, (slider.GetRangeMax() - slider.GetRangeMin()) / 20));
 		}
@@ -193,10 +203,10 @@ private:
 	}
 
 	void ShowValues() {
-		CheckDlgButton(IDC_SCROLL_SMOOTH, m_values.view.smoothScroll ? BST_CHECKED : BST_UNCHECKED);
-		CheckDlgButton(IDC_SCROLL_PIN, m_values.view.pinHeaders ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_SCROLL_SMOOTH, m_values.view.fields.smoothScroll ? BST_CHECKED : BST_UNCHECKED);
+		CheckDlgButton(IDC_SCROLL_PIN, m_values.view.fields.pinHeaders ? BST_CHECKED : BST_UNCHECKED);
 		for (int i = 0; i < kSettingCount; ++i) {
-			CTrackBarCtrl(GetDlgItem(IDC_SCROLL_SLIDER_0 + i)).SetPos(SliderPosition(kInertiaSettings[i], m_values.params.*kInertiaSettings[i].field));
+			CTrackBarCtrl(GetDlgItem(kSliderIds[i])).SetPos(SliderPosition(kInertiaSettings[i], m_values.params.*kInertiaSettings[i].field));
 			ShowNumber(i);
 		}
 		FillPresets();
@@ -206,7 +216,7 @@ private:
 	void ShowNumber(int index) {
 		const bool wasShowing = m_showing;
 		m_showing = true;
-		SetDlgItemText(IDC_SCROLL_VALUE_0 + index, FormatValue(kInertiaSettings[index], m_values.params.*kInertiaSettings[index].field).c_str());
+		SetDlgItemText(kValueIds[index], FormatValue(kInertiaSettings[index], m_values.params.*kInertiaSettings[index].field).c_str());
 		m_showing = wasShowing;
 	}
 
@@ -249,15 +259,15 @@ private:
 		const bool custom = IsCustom();
 		const bool fromUserPreset = FindScrollPreset(m_values.userPresets, m_values.presetName).has_value();
 
-		const bool on = m_values.view.smoothScroll;
+		const bool on = m_values.view.fields.smoothScroll;
 
 		const int controls[] = { IDC_SCROLL_PRESET, IDC_SCROLL_NEW_NAME, IDC_SCROLL_SAVE_NEW, IDC_SCROLL_RESET };
 		for (const int id : controls) GetDlgItem(id).EnableWindow(on);
 		GetDlgItem(IDC_SCROLL_DELETE).EnableWindow(on && fromUserPreset && !custom);
 		GetDlgItem(IDC_SCROLL_OVERWRITE).EnableWindow(on && fromUserPreset && custom);
 		for (int i = 0; i < kSettingCount; ++i) {
-			GetDlgItem(IDC_SCROLL_SLIDER_0 + i).EnableWindow(on);
-			GetDlgItem(IDC_SCROLL_VALUE_0 + i).EnableWindow(on);
+			GetDlgItem(kSliderIds[i]).EnableWindow(on);
+			GetDlgItem(kValueIds[i]).EnableWindow(on);
 		}
 	}
 
@@ -267,7 +277,7 @@ private:
 		if (IsCustom() != m_listedCustom) FillPresets();
 		if (!SameViewPart(m_shown, m_values)) {
 			ShowPreferencesPreview();
-			CopySettings(m_values.view, m_shown.view, SettingsPage::Scrolling);
+			m_shown.view.TakeFrom(m_values.view.fields);
 		}
 		ShowState();
 		m_callback->on_state_changed();
@@ -275,13 +285,13 @@ private:
 
 	void OnCheckChanged(UINT, int id, CWindow) {
 		const bool checked = IsDlgButtonChecked(id) == BST_CHECKED;
-		if (id == IDC_SCROLL_SMOOTH) m_values.view.smoothScroll = checked;
-		else m_values.view.pinHeaders = checked;
+		if (id == IDC_SCROLL_SMOOTH) m_values.view.fields.smoothScroll = checked;
+		else m_values.view.fields.pinHeaders = checked;
 		Changed();
 	}
 
 	void OnSlider(UINT, UINT, CScrollBar bar) {
-		const int index = bar.GetDlgCtrlID() - IDC_SCROLL_SLIDER_0;
+		const int index = SettingOfControl(kSliderIds, bar.GetDlgCtrlID());
 		if (index < 0 || index >= kSettingCount) return;
 		const InertiaSetting& setting = kInertiaSettings[index];
 		const double value = ClampInertiaValue(setting, CTrackBarCtrl(bar.m_hWnd).GetPos() / SliderScale(setting));
@@ -292,7 +302,7 @@ private:
 	}
 
 	void OnNumberTyped(UINT, int id, CWindow box) {
-		const int index = id - IDC_SCROLL_VALUE_0;
+		const int index = SettingOfControl(kValueIds, id);
 		if (m_showing || index < 0 || index >= kSettingCount) return;
 		CString text;
 		box.GetWindowText(text);
@@ -300,13 +310,13 @@ private:
 		const std::optional<double> value = ParseValue(setting, std::wstring(text));
 		if (!value || *value == m_values.params.*setting.field) return;
 		m_values.params.*setting.field = *value;
-		CTrackBarCtrl(GetDlgItem(IDC_SCROLL_SLIDER_0 + index)).SetPos(SliderPosition(setting, *value));
+		CTrackBarCtrl(GetDlgItem(kSliderIds[index])).SetPos(SliderPosition(setting, *value));
 		Changed();
 	}
 
 	// A box left with a half-typed or out-of-range number shows the number in use again.
 	void OnNumberLeft(UINT, int id, CWindow) {
-		const int index = id - IDC_SCROLL_VALUE_0;
+		const int index = SettingOfControl(kValueIds, id);
 		if (index >= 0 && index < kSettingCount) ShowNumber(index);
 	}
 
@@ -360,8 +370,9 @@ private:
 	}
 
 	void OnResetButton(UINT, int, CWindow) {
-		m_values.presetName = kDefaultScrollPresetName;
-		m_values.params = BuiltInScrollPresets()[0].params;
+		const ScrollPreset preset = DefaultScrollPreset();
+		m_values.presetName = preset.name;
+		m_values.params = preset.params;
 		ShowValues();
 		Changed();
 	}
